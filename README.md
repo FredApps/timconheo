@@ -1,64 +1,141 @@
-# Tìm Con Heo
+﻿# Tim Con Heo
 
-Tìm Con Heo is a calm, local-first Vietnamese reading app for an absolute beginner. It exposes Vietnamese word boundaries, glosses, Central-dialect notes, and tone contours while keeping authentic text intact.
+A calm Vietnamese reading app for beginners, with an ear pointed at Da Nang
+and Quang Nam. It exposes Vietnamese word boundaries, glosses, Central-dialect
+notes, and tone contours while leaving authentic text intact.
 
-The current app includes:
+Live at **https://ayrien.se/heo/**
 
-- five public-domain nursery-rhyme readings with phrase-level segmentation;
-- three scaffolding levels: **Đầy đủ**, **Vừa**, and **Trần**;
-- tappable dictionary sheets with classifier, reduplication, pronoun, Hán–Việt, and Đà Nẵng notes;
-- system Vietnamese speech with an explicit source/accent label;
-- a five-tone Đà Nẵng lab with microphone pitch capture and shape-based feedback;
-- device-local words, FSRS cards, reading completion, and imports via IndexedDB/local storage;
-- time-boxed review sessions and a cumulative, never-wilting vocabulary garden;
-- light/dark themes, mobile bottom navigation, self-hosted Vietnamese fonts, and offline runtime caching.
+## What it does
 
-## Run locally
+- Read annotated Vietnamese stories with three scaffolding levels.
+- Track vocabulary locally to each account and review it with FSRS scheduling.
+- Import and save personal reading material.
+- Practice the five tones with microphone pitch contours and feedback.
+- Use the responsive web app or the Android Capacitor shell.
+
+## Architecture
+
+The project is a Vite/React client with an Express server and SQLite-backed
+account data. In production, IIS reverse-proxies /heo to the Node process.
+
+~~~text
+browser / Android WebView
+        |
+        | https://ayrien.se/heo/
+        v
+IIS reverse proxy
+        |
+        v
+Express (dist/server/server.js)
+  /heo/api/*        JSON API and session-cookie auth
+  /heo/download/*   APK downloads
+  /heo/*            built SPA
+        |
+        v
+SQLite: C:\ProgramData\TimConHeo\timconheo.sqlite3
+~~~
+
+The client uses React 19 and Vite with base /heo/. The server uses Express 5
+and ts-fsrs; passwords are scrypt-hashed and session tokens are stored as
+SHA-256 hashes in httpOnly, Secure, SameSite=Lax cookies.
+
+## Local configuration and secrets
+
+Runtime configuration is loaded from .env, which is intentionally ignored by
+Git. Copy the example and set a unique initial password before the first start:
+
+~~~powershell
+Copy-Item .env.example .env
+notepad .env
+~~~
+
+HEO_SEED_PASSWORD is required only when the database has no users. It is not
+needed after the first account has been created. Keep deployment credentials,
+Android signing files, local.properties, and other machine-specific secrets
+under the local secrets directory rather than in this repository.
+
+## Develop
 
 Requires Node.js 22.13 or newer.
 
-```powershell
+~~~powershell
 npm install
 npm run dev
-```
+~~~
 
-The local development address is printed in the terminal (normally `http://localhost:3000`).
+Vite serves the client on port 5173 and proxies /heo/api to the server on
+port 3092.
 
 ## Verify
 
-```powershell
+~~~powershell
+npm run typecheck
 npm run lint
 npm test
-npm audit
-```
+~~~
 
-`npm test` performs a production build and server-render smoke tests.
+## Accounts
 
-## Data and privacy
+Signups are closed by default after the first account exists. Use the admin
+CLI on the server to manage accounts:
 
-There are no accounts or server-side user records. Saved words, review cards, progress, and pasted imports remain in browser storage on the current device. Imported copyrighted text is never sent to an application server.
+~~~powershell
+npm run admin -- list
+npm run admin -- add <username> <password>
+npm run admin -- passwd <username> <password>
+~~~
 
-Bundled sample readings are public-domain oral-tradition material. Audio played in the web build uses the device's `vi-VN` system voice and is deliberately labeled as such; it is not represented as a Đà Nẵng voice.
+## Deploy
 
-## Main files
+Run deployment from the AnayPC environment:
 
-- `app/App.tsx` — product flows and interactions
-- `app/data.ts` — annotated sample corpus
-- `app/globals.css` — visual system and responsive layouts
-- `app/lib/database.ts` — Dexie persistence and FSRS scheduling
-- `app/lib/pitch.ts` — microphone pitch detection and tone feedback
-- `public/sw.js` — offline runtime cache
-- `android/` — Capacitor Android application with bundled offline assets
-- `deploy/` — IIS-safe web deployment files
+~~~powershell
+.\scripts\install-server.ps1
+~~~
+
+The installer publishes the app to C:\ProgramData\TimConHeo\app, installs
+dependencies, builds the client and server, restarts the supervisor, and adds
+the IIS reverse-proxy rule. Runtime data and logs stay under
+C:\ProgramData\TimConHeo and are never part of the Git checkout.
 
 ## Android
 
-The native project uses Capacitor and includes the web bundle inside the APK. Native Vietnamese TTS and speech-recognition plugins are installed; the web microphone contour lab remains available inside the WebView.
+~~~powershell
+.\scripts\release-android.ps1            # debug
+.\scripts\release-android.ps1 -Release   # signed release
+~~~
 
-```powershell
-npm run build:android
-cd android
-.\gradlew.bat assembleDebug --no-daemon
-```
+The APK is a Capacitor shell pointed at https://ayrien.se/heo/; learning state
+remains on the server. Android signing configuration belongs in the local
+secrets directory and must not be committed.
 
-The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
+## Data and privacy
+
+Imported text is stored with the signed-in account on this server and is not
+sent to a third party by the application. Bundled readings are public-domain
+oral-tradition material. Audio uses the device's vi-VN system voice and is not
+presented as a Da Nang voice recording.
+
+## Main files
+
+- app/Root.tsx — session gate and login screen
+- app/App.tsx — product flows and interactions
+- app/data.ts — annotated sample corpus
+- app/lib/api.ts — typed API client
+- app/lib/pitch.ts — microphone pitch detection and tone feedback
+- server/server.ts — routes and static serving
+- server/auth.ts — password hashing, sessions, and rate limiting
+- server/database.ts — SQLite schema and per-user queries
+- scripts/install-server.ps1 — deployment
+
+## Contributing
+
+See CONTRIBUTORS.md. Keep secrets and generated build outputs out of commits,
+run the verification commands before pushing, and document user-facing changes
+in CHANGELOG.md.
+
+## License
+
+Tim Con Heo is licensed under the GNU General Public License v3.0-only. See
+LICENSE for the full text.

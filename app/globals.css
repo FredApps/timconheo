@@ -341,3 +341,25 @@ h1, h2, h3 { font-family: var(--font-source-serif), Georgia, serif; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* --- sign in ------------------------------------------------------------- */
+.login-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.login-loading { color: var(--ink-faint); font-size: 14px; }
+.login-card { width: min(100%, 25rem); padding: 32px 30px 26px; }
+.login-card h1 { margin: 0 0 10px; font-size: clamp(26px, 4vw, 34px); line-height: 1.1; letter-spacing: -0.03em; }
+.login-intro { margin: 0 0 24px; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.login-card form { display: grid; gap: 15px; }
+.login-card label { display: grid; gap: 7px; color: var(--ink-soft); font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.login-card input {
+  min-height: 44px; padding: 10px 13px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--paper-wash); color: var(--ink);
+  font-family: inherit; font-size: 16px; font-weight: 500; letter-spacing: normal; text-transform: none;
+}
+.login-card input:focus-visible { outline: 2px solid var(--lacquer); outline-offset: 1px; border-color: var(--lacquer); }
+.login-card .primary-button { width: 100%; margin-top: 4px; }
+.login-error { margin: 0; color: var(--lacquer); font-size: 13px; font-weight: 600; }
+.link-button {
+  width: 100%; margin-top: 18px; padding: 8px 0; border: 0; background: transparent;
+  color: var(--ink-soft); font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.link-button:hover { color: var(--lacquer); text-decoration: underline; }

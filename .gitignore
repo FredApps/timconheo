@@ -1,4 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+﻿# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
 /node_modules
@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -43,3 +44,17 @@ next-env.d.ts
 /.logs/
 /corpus/audio/
 /corpus/local/
+
+# local secrets and machine-specific configuration
+.secrets/
+*.local
+*.local.*
+**/local.properties
+*.p12
+*.jks
+*.keystore
+
+# generated Android/Gradle output
+/android/.gradle/
+/android/app/build/
+/android/build/

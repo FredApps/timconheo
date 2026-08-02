@@ -1,20 +1,23 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
+export default defineConfig([
   globalIgnores([
-    // Default ignores of eslint-config-next:
+    "**/node_modules/**",
     ".next/**",
     "out/**",
     "build/**",
     "android/**",
     "dist/**",
-    "next-env.d.ts",
+    "coverage/**",
   ]),
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    rules: {
+      "no-constant-condition": "error",
+      "no-debugger": "warn",
+      "no-duplicate-case": "error",
+      "no-unreachable": "error",
+      "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    },
+  },
 ]);
-
-export default eslintConfig;

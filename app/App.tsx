@@ -25,14 +25,17 @@ import {
   Settings2,
   Sparkles,
   Sprout,
+  LogOut,
   Sun,
   Upload,
   Volume2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CardRecord, ImportRecord, WordRecord } from "./lib/database";
-import { db, Rating, rememberWord, reviewCard, updateWordStatus } from "./lib/database";
+import { Rating } from "ts-fsrs";
+import type { CardRecord, ImportRecord, WordRecord } from "./lib/api";
+import { api } from "./lib/api";
+import type { User } from "../shared/types";
 import { detectPitch, normalizeContour, toneFeedback } from "./lib/pitch";
 import { STORIES, TONES } from "./data";
 import type { AppView, Story, Token, ToneKey, WordStatus } from "./types";
@@ -80,11 +83,15 @@ function AppHeader({
   onNavigate,
   theme,
   onTheme,
+  username,
+  onSignOut,
 }: {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
   theme: ThemeMode;
   onTheme: () => void;
+  username: string;
+  onSignOut: () => Promise<void>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
@@ -102,6 +109,9 @@ function AppHeader({
       <div className="topbar-actions">
         <button className="icon-button" onClick={onTheme} aria-label={`Đổi giao diện, hiện tại: ${theme}`}>
           {theme === "light" ? <Sun size={18} /> : theme === "dark" ? <Moon size={18} /> : <Settings2 size={18} />}
+        </button>
+        <button className="icon-button" onClick={() => void onSignOut()} aria-label={`Đăng xuất khỏi ${username}`} title={`${username} — đăng xuất`}>
+          <LogOut size={18} />
         </button>
         <button className="icon-button menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label="Mở trình đơn" aria-expanded={menuOpen}>
           {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -538,7 +548,7 @@ function ReviewView({ cards, onRefresh }: { cards: CardRecord[]; onRefresh: () =
 
   const rate = async (rating: Rating) => {
     if (!current) return;
-    await reviewCard(current.id, rating);
+    await api.reviewCard(current.id, rating);
     if (index + 1 >= shownCards.length) { await onRefresh(); setStarted(false); setIndex(0); setRevealed(false); }
     else { setIndex((value) => value + 1); setRevealed(false); }
   };
@@ -632,7 +642,7 @@ function ImportView({ imports, onSaved }: { imports: ImportRecord[]; onSaved: ()
   const difficulty = Math.min(10, Math.max(1, Math.round(1 + Math.sqrt(tokens.length) / 1.8)));
   const save = async () => {
     if (!raw.trim()) return;
-    await db.imports.add({ title: title.trim() || "Bài đọc của tôi", raw: raw.trim(), importedAt: Date.now(), difficulty });
+    await api.addImport(title.trim() || "Bài đọc của tôi", raw.trim(), difficulty);
     setSaved(true); await onSaved();
   };
   return (
@@ -660,7 +670,7 @@ function AboutView() {
 
 function Toast({ message }: { message: string }) { return <div className="toast" role="status"><Check size={17} />{message}</div>; }
 
-export default function App() {
+export default function App({ user, onSignOut }: { user: User; onSignOut: () => Promise<void> }) {
   const [view, setView] = useState<AppView>("home");
   const [story, setStory] = useState<Story>(STORIES[0]);
   const [theme, setTheme] = useState<ThemeMode>("system");
@@ -671,23 +681,19 @@ export default function App() {
   const [toast, setToast] = useState("");
 
   const refresh = useCallback(async () => {
-    const [nextWords, nextCards, nextImports] = await Promise.all([db.words.toArray(), db.cards.orderBy("updatedAt").reverse().toArray(), db.imports.orderBy("importedAt").reverse().toArray()]);
-    setWords(nextWords); setCards(nextCards); setImports(nextImports);
+    const state = await api.state();
+    setWords(state.words);
+    setCards([...state.cards].sort((a, b) => b.updatedAt - a.updatedAt));
+    setImports(state.imports);
+    setCompletedStories(state.progress.filter((item) => item.completedAt).map((item) => item.storyId));
   }, []);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("tch-theme") as ThemeMode | null;
     const initialHash = window.location.hash.replace("#", "") as AppView;
-    let storedCompleted: string[] = [];
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem("tch-completed") ?? "[]") as unknown;
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) storedCompleted = parsed;
-    } catch {
-      window.localStorage.removeItem("tch-completed");
-    }
+    // Reading progress now lives on the server, per account; only the theme is local.
     const restore = window.setTimeout(() => {
       if (storedTheme) setTheme(storedTheme);
-      setCompletedStories(storedCompleted);
       if (initialHash.startsWith("read/")) {
         const linkedStory = STORIES.find((item) => item.id === initialHash.slice(5));
         if (linkedStory) { setStory(linkedStory); setView("reader"); }
@@ -732,26 +738,22 @@ export default function App() {
 
   const read = (nextStory: Story) => { setStory(nextStory); setView("reader"); window.history.pushState(null, "", `#read/${nextStory.id}`); window.scrollTo(0, 0); };
   const statuses = useMemo(() => Object.fromEntries(words.map((word) => [word.entry, word.status])), [words]);
-  const remember = async (token: Token, sentenceId: string) => { await rememberWord(token.entry, token.gloss, sentenceId); await refresh(); setToast(`Đã lưu “${token.entry}” để gặp lại.`); };
-  const setStatus = async (entry: string, status: WordStatus, gloss = "") => {
-    const existing = await db.words.get(entry);
-    if (!existing) await db.words.put({ entry, gloss, status, timesSeen: 1, firstSeen: Date.now(), updatedAt: Date.now() });
-    else await updateWordStatus(entry, status);
+  const remember = async (token: Token, sentenceId: string) => { await api.rememberWord(token.entry, token.gloss, sentenceId); await refresh(); setToast(`Đã lưu “${token.entry}” để gặp lại.`); };
+  const setStatus = async (entry: string, status: WordStatus) => {
+    await api.setWordStatus(entry, status);
     await refresh(); setToast(status === "known" ? `“${entry}” đã bén rễ.` : `Đã cập nhật “${entry}”.`);
   };
-  const completeStory = (storyId: string) => {
-    setCompletedStories((current) => {
-      const next = current.includes(storyId) ? current : [...current, storyId];
-      window.localStorage.setItem("tch-completed", JSON.stringify(next));
-      return next;
-    });
+  const completeStory = async (storyId: string) => {
+    setCompletedStories((current) => (current.includes(storyId) ? current : [...current, storyId]));
     setToast("Bài đọc đã thêm một luống vào vườn.");
+    const sentencesRead = STORIES.find((item) => item.id === storyId)?.sentences.map((item) => item.id) ?? [];
+    await api.saveProgress(storyId, sentencesRead, Date.now());
   };
   const cycleTheme = () => setTheme((value) => value === "system" ? "light" : value === "light" ? "dark" : "system");
 
   return (
     <div className="app-shell">
-      {view !== "reader" && <AppHeader currentView={view} onNavigate={navigate} theme={theme} onTheme={cycleTheme} />}
+      {view !== "reader" && <AppHeader currentView={view} onNavigate={navigate} theme={theme} onTheme={cycleTheme} username={user.username} onSignOut={onSignOut} />}
       {view === "home" && <HomeView onRead={read} onNavigate={navigate} knownCount={words.filter((word) => word.status === "known").length} completedStories={completedStories} />}
       {view === "reader" && <ReaderView story={story} statuses={statuses} onBack={() => navigate("home")} onRemember={remember} onStatus={setStatus} onComplete={() => completeStory(story.id)} />}
       {view === "tones" && <TonesView />}
