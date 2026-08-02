@@ -1,0 +1,4 @@
+import { BookOpenText, Languages, Sprout } from "lucide-react";
+import { T } from "../i18n";
+import { PigMark } from "../components/ui";
+export default function AboutView() { return <main className="page feature-page about-page"><section className="about-hero"><PigMark /><p className="eyebrow"><T k="app.title" /></p><h1><T k="about.title" /></h1><p><T k="about.body" /></p></section><div className="about-grid"><article className="paper-card"><Sprout size={22} /><h2><T k="about.noPressure" /></h2><p><T k="about.noPressureBody" /></p></article><article className="paper-card"><Languages size={22} /><h2><T k="about.honest" /></h2><p><T k="about.honestBody" /></p></article><article className="paper-card"><BookOpenText size={22} /><h2><T k="about.open" /></h2><p><T k="about.openBody" /></p></article></div><p className="build-note">v0.5.0 · GPLv3-only</p></main>; }

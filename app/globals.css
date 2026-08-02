@@ -1,4 +1,3 @@
-@import "tailwindcss";
 
 :root {
   --paper-bg: #f3ecdf;
@@ -363,3 +362,28 @@ h1, h2, h3 { font-family: var(--font-source-serif), Georgia, serif; }
   color: var(--ink-soft); font-family: inherit; font-size: 13px; cursor: pointer;
 }
 .link-button:hover { color: var(--lacquer); text-decoration: underline; }
+
+/* v0.5 bilingual, library, and timed-review surfaces */
+.bi { display: inline-grid; gap: 2px; }
+.bi-secondary { display: block; color: var(--ink-soft); font-size: 0.82em; line-height: 1.25; }
+.topbar { height: auto; min-height: 68px; }
+.token--unseen { background: transparent; }
+.library-controls, .filter-row, .session-picker, .rating-row, .pair-buttons { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.library-controls, .session-picker { justify-content: space-between; margin: 18px 0; }
+.library-controls select, .session-picker button, .rating-row button, .pair-buttons button { min-height: 42px; }
+.story-meta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--ink-soft); font-size: 0.82rem; }
+.difficulty-band { border-radius: 999px; padding: 3px 8px; font-size: 0.78rem; font-weight: 700; }
+.band-gentle { color: #27634b; background: #dcecdf; }
+.band-steady { color: #735523; background: #f5e9bf; }
+.band-stretch { color: #8b472f; background: #f3d6c9; }
+.band-hard { color: #7d2e33; background: #edc3c7; }
+.review-session-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.review-progress { height: 5px; margin: 14px 0 24px; overflow: hidden; border-radius: 99px; background: var(--line); }
+.review-progress i { display: block; height: 100%; background: var(--lacquer); transition: width 0.25s ease; }
+.flash-card { position: relative; text-align: center; }
+.flash-gloss, .context-line { color: var(--ink-soft); }
+.context-line { margin: 20px auto; max-width: 42rem; font-family: var(--font-source-serif); font-size: 1.2rem; }
+.word-audio { position: absolute; top: 20px; right: 20px; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.overflow-menu label { display: flex; align-items: center; gap: 8px; }
+.saved-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (max-width: 700px) { .library-controls, .session-picker { align-items: stretch; flex-direction: column; } .review-session-top { align-items: flex-start; flex-direction: column; } }

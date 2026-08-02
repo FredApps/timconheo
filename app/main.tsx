@@ -9,9 +9,4 @@ import "@fontsource/source-serif-4/600.css";
 import "@fontsource/source-serif-4/700.css";
 import "./globals.css";
 import Root from "./Root";
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <Root />
-  </StrictMode>,
-);
+createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);

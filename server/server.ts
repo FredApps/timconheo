@@ -1,8 +1,8 @@
-﻿import path from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import compression from "compression";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { createEmptyCard, fsrs, Rating, type Card } from "ts-fsrs";
+import { createEmptyCard, fsrs, Rating, State, type Card } from "ts-fsrs";
 import type { CardRecord, WordStatus } from "../shared/types.js";
 import {
   AuthService,
@@ -16,6 +16,7 @@ import {
 } from "./auth.js";
 import { config } from "./config.js";
 import { HeoDatabase } from "./database.js";
+import { forgiveBacklog, packQueue } from "./scheduler.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/server/server.js -> dist/client
@@ -23,7 +24,7 @@ const clientDir = path.resolve(here, "../client");
 
 const db = new HeoDatabase();
 const auth = new AuthService(db);
-const scheduler = fsrs({ enable_fuzz: true, enable_short_term: false });
+const scheduler = fsrs({ enable_fuzz: true, enable_short_term: true });
 
 /**
  * Seed the first account so a fresh install is usable immediately. Only ever
@@ -196,6 +197,28 @@ router.post("/api/words/status", auth.requireUser, (req: Request, res: Response)
   res.json({ word: db.getWord(userId, entry) });
 });
 
+/** Queue construction is server-owned so every device sees the same due set. */
+router.get("/api/cards/queue", auth.requireUser, (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const minutes = Math.min(20, Math.max(1, Number(req.query.minutes ?? 5)));
+  const now = Date.now();
+  let settings = db.getSettings(userId);
+  let due = db.listCardsDue(userId, now);
+  const forgiveness = forgiveBacklog(due, now, settings);
+  if (forgiveness.applied) {
+    for (const item of forgiveness.cards) db.rescheduleCardDue(userId, item.id, item.due);
+    settings = { ...forgiveness.settings, lastQueueAt: now };
+    due = db.listCardsDue(userId, now);
+  } else {
+    settings = { ...settings, lastQueueAt: now };
+  }
+  db.setSettings(userId, settings);
+  const newCount = db.countNewCardsSince(userId, now - 86400000);
+  const budgetMs = minutes * 60000;
+  const cards = packQueue(due, now, budgetMs, newCount);
+  res.json({ cards, budgetMs, serverNow: now, newCount, forgiveness: forgiveness.applied ? { message: "Welcome back — your reviews were gently spread out." } : null });
+});
+
 /** FSRS scheduling lives here so every device sees the same due dates. */
 router.post("/api/cards/review", auth.requireUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -218,7 +241,9 @@ router.post("/api/cards/review", auth.requireUser, (req: Request, res: Response)
     updatedAt: Date.now(),
   };
   db.putCard(userId, updated);
-  db.setWordStatus(userId, record.entry, rating >= Rating.Good ? "known" : "learning");
+  const previousWord = db.getWord(userId, record.entry);
+  const nextStatus = previousWord?.status === "known" || scheduled.card.state === State.Review ? "known" : "learning";
+  db.setWordStatus(userId, record.entry, nextStatus);
   res.json({ card: updated, word: db.getWord(userId, record.entry) });
 });
 
@@ -247,7 +272,7 @@ router.post("/api/imports", auth.requireUser, (req: Request, res: Response) => {
     return;
   }
   const record = db.addImport(req.user!.id, {
-    title: String(req.body?.title ?? "BÃ i Ä‘á»c cá»§a tÃ´i"),
+    title: String(req.body?.title ?? "My Vietnamese text"),
     raw,
     difficulty: Number(req.body?.difficulty ?? 0),
   });

@@ -1,49 +1,14 @@
-export type ToneKey = "ngang" | "huyền" | "sắc" | "hỏi-ngã" | "nặng";
-
+export type Bi = Readonly<{ en: string; vi: string }>;
+export type ToneKey = "ngang" | "huyen" | "sac" | "hoi-nga" | "nang";
 export type WordStatus = "new" | "learning" | "known" | "ignored";
-
-export interface Token {
-  text: string;
-  entry: string;
-  gloss: string;
-  detail?: string;
-  pronunciation?: string;
-  central?: string;
-  pos?: string;
-  classifier?: boolean;
-  hanViet?: { character: string; meaning: string; family: string[] };
-}
-
-export interface Sentence {
-  id: string;
-  translation: string;
-  tokens: Token[];
-}
-
-export interface Story {
-  id: string;
-  title: string;
-  titleEn: string;
-  tier: number;
-  kind: string;
-  region: string;
-  minutes: number;
-  difficulty: number;
-  unknownRatio: number;
-  description: string;
-  source: string;
-  license: string;
-  accent: string;
-  pattern: "stork" | "cat" | "dragon" | "saw" | "steps";
-  sentences: Sentence[];
-}
-
-export type AppView =
-  | "home"
-  | "reader"
-  | "review"
-  | "tones"
-  | "garden"
-  | "words"
-  | "import"
-  | "about";
+export type PosKey = "classifier" | "noun" | "verb" | "adjective" | "pronoun" | "conjunction" | "phrase" | "question" | "particle" | "adverb";
+export type KindKey = "dongDao" | "caDao" | "alphabet" | "tonePrimer" | "firstWords" | "import";
+export type RegionKey = "national" | "central" | "daNang" | "quangNam";
+export type LicenseKey = "publicDomain" | "original" | "user";
+export type StoryPattern = "stork" | "cat" | "dragon" | "saw" | "steps" | "letter" | "tone" | "sprout";
+export interface Token { text: string; entry: string; gloss: Bi; detail?: Bi; pronunciation?: string; central?: Bi; pos?: PosKey; classifier?: boolean; hanViet?: { character: string; meaning: string; family: string[] }; }
+export interface Sentence { id: string; translation: Bi; tokens: Array<{ text: string; entry?: string }>; }
+export interface Story { id: string; title: string; titleEn: string; tier: number; kind: KindKey; region: RegionKey; description: Bi; source: string; license: LicenseKey; accent?: string; pattern: StoryPattern; sentences: Sentence[]; interactive?: "alphabet" | "toneMatch"; }
+export type AppView = "home" | "library" | "reader" | "review" | "tones" | "garden" | "words" | "import" | "about";
+export type ScaffoldMode = "full" | "assisted" | "raw";
+export type ThemeMode = "light" | "dark" | "system";

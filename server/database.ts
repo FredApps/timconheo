@@ -58,8 +58,9 @@ export class HeoDatabase {
         is_admin INTEGER NOT NULL DEFAULT 0,
         disabled INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+        updated_at TEXT NOT NULL,
+         settings_json TEXT NOT NULL DEFAULT '{}'
+       );
 
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -123,8 +124,11 @@ export class HeoDatabase {
         score REAL NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_tones_user ON tone_attempts(user_id, created_at);
-    `);
+      CREATE INDEX IF NOT EXISTS idx_tones_user ON tone_attempts(user_id, created_at);      `);
+    const columns = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "settings_json")) {
+      this.db.exec("ALTER TABLE users ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'");
+    }
   }
 
   close(): void {
@@ -240,9 +244,7 @@ export class HeoDatabase {
 
   getState(userId: string): UserState {
     return {
-      words: this.listWords(userId),
-      cards: this.listCards(userId),
-      progress: this.listProgress(userId),
+      words: this.listWords(userId), progress: this.listProgress(userId),
       imports: this.listImports(userId),
       tones: this.listTones(userId),
     };
@@ -318,6 +320,28 @@ export class HeoDatabase {
     }));
   }
 
+  listCardsDue(userId: string, now: number): CardRecord[] {
+    const rows = this.db.prepare("SELECT * FROM cards WHERE user_id = ? AND due <= ? ORDER BY due").all(userId, now) as Record<string, unknown>[];
+    return rows.map((row) => ({ id: String(row.id), entry: String(row.entry), gloss: String(row.gloss), sourceSentenceId: String(row.source_sentence_id), card: JSON.parse(String(row.card_json)), due: Number(row.due), updatedAt: Number(row.updated_at) }));
+  }
+
+  countNewCardsSince(userId: string, since: number): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM cards WHERE user_id = ? AND updated_at >= ? AND json_extract(card_json, '$.reps') = 1").get(userId, since) as { n: number };
+    return Number(row.n);
+  }
+
+  rescheduleCardDue(userId: string, id: string, due: number): void {
+    this.db.prepare("UPDATE cards SET due = ? WHERE user_id = ? AND id = ?").run(due, userId, id);
+  }
+
+  getSettings(userId: string): Record<string, number> {
+    const row = this.db.prepare("SELECT settings_json FROM users WHERE id = ?").get(userId) as { settings_json?: string } | undefined;
+    try { return row?.settings_json ? JSON.parse(row.settings_json) as Record<string, number> : {}; } catch { return {}; }
+  }
+
+  setSettings(userId: string, settings: Record<string, number>): void {
+    this.db.prepare("UPDATE users SET settings_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(settings), new Date().toISOString(), userId);
+  }
   getCard(userId: string, id: string): CardRecord | null {
     const row = this.db
       .prepare("SELECT * FROM cards WHERE user_id = ? AND id = ?")

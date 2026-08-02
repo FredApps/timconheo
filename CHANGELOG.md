@@ -1,9 +1,14 @@
 # Changelog
 
-## 0.3.0 — 2026-08-02
+## 0.5.0 — 2026-08-03
 
-- Added the complete annotated nursery-rhyme reading flow and three scaffolding levels.
-- Added device-local words, FSRS review scheduling, saved imports, and completed-story progress.
-- Added the five-tone Đà Nẵng lab with microphone pitch contours and feature-level feedback.
-- Added the cumulative vocabulary garden, self-hosted Vietnamese typography, light/dark themes, responsive navigation, and offline caching.
-- Added IIS-safe deployment configuration and a Vietnamese pig-themed social preview.
+- Made the product English-primary with bilingual, English-only, and Vietnamese-first modes persisted as `tch-lang`.
+- Split the app into views and components, added the open Library and five-item bottom navigation, and moved Garden to overflow navigation.
+- Added transparent static difficulty bands, frequency provenance, personal unknown-word estimates, tier 0 material, and additional Quảng Nam / folk-verse corpus entries.
+- Added a server-side due-card queue with daily new-card caps, relative-overdueness packing, real-clock review sessions, forgiveness after long inactivity, and FSRS short-term learning.
+- Reworked tone feedback around normalized full pitch contours, silence detection, and a real five-choice exercise while preserving the mả/mã demonstration.
+- Added regression tests, architecture documentation, bilingual metadata, and GPLv3 contributor/project documentation.
+
+## 0.4.0 — 2026-08-02
+
+- Prepared the repository for public collaboration with a README, contributor guidance, GPLv3-only licensing, metadata, and local-secret separation.

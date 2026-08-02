@@ -1,6 +1,6 @@
 {
     "name":  "tim-con-heo",
-    "version":  "0.4.0",
+    "version": "0.5.0",
     "private":  true,
     "type":  "module",
     "engines":  {
@@ -12,7 +12,7 @@
                     "start":  "node dist/server/server.js",
                     "admin":  "tsx server/admin.ts",
                     "typecheck":  "tsc -p tsconfig.client.json --noEmit \u0026\u0026 tsc -p tsconfig.server.json --noEmit",
-                    "test":  "node --import tsx --test test/*.test.ts",
+                    "test": "node --import tsx --test tests/*.test.ts",
                     "lint":  "eslint . --ignore-pattern dist --ignore-pattern android",
                     "build:android":  "vite build \u0026\u0026 cap sync android"
                 },
