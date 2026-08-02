@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 
 try {
   process.loadEnvFile(path.resolve(process.cwd(), ".env"));
@@ -27,10 +27,11 @@ export const config = {
   // Signups are closed by default: this is a personal app behind a reverse proxy.
   // Accounts are created with `npm run admin`.
   allowSignups: bool(process.env.HEO_ALLOW_SIGNUPS, false),
-  version: process.env.npm_package_version ?? "0.4.0",
+  version: process.env.npm_package_version ?? "0.5.0",
 };
 
 export const paths = {
   database: path.join(config.dataDir, "timconheo.sqlite3"),
   backups: path.join(config.dataDir, "backups"),
 };
+
