@@ -60,6 +60,7 @@ app.use(auth.middleware);
 
 const router = express.Router();
 const loginLimiter = new RateLimiter(60_000, 10, (req) => `login:${req.ip}`);
+const ttsLimiter = new RateLimiter(60_000, 30, (req) => `tts:${req.user?.id ?? req.ip}`);
 
 function asyncRoute(
   handler: (req: Request, res: Response) => Promise<void>,
@@ -295,7 +296,7 @@ router.post("/api/tones", auth.requireUser, (req: Request, res: Response) => {
   res.json({ tones: db.listTones(req.user!.id) });
 });
 
-router.post("/api/tts", auth.requireUser, asyncRoute(async (req, res) => {
+router.post("/api/tts", auth.requireUser, ttsLimiter.middleware, asyncRoute(async (req, res) => {
   const response = await tts.request(req.body?.text, req.body?.voice);
   res.status(response.status === "pending" ? 202 : 200).json(response);
 }));

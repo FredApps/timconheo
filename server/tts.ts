@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { TtsResponse, TtsVoice } from "../shared/types.js";
 
@@ -9,6 +9,11 @@ const MAX_PART = 4500;
 const RETRY_MS = 1500;
 const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_BYTES = 250 * 1024 * 1024;
+const REQUEST_TIMEOUT_MS = 10000;
+const FAILED_RETRY_MS = 30000;
+const MAX_CONCURRENT = 2;
+const MAX_PENDING = 24;
+const PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 
 export const FPT_VOICES = { myan: "My An (female Central Vietnamese)", giahuy: "Gia Huy (male Central Vietnamese)" } as const satisfies Record<TtsVoice, string>;
 export class TtsError extends Error { constructor(readonly code: string, message: string, readonly status = 500) { super(message); this.name = "TtsError"; } }
@@ -38,31 +43,58 @@ export function ttsCacheKey(text: string, voice: TtsVoice, speed: number): strin
   return createHash("sha256").update("tts-v1\0" + voice + "\0" + speed + "\0" + text).digest("hex");
 }
 type FetchLike = typeof fetch;
-type Job = { id: string; voice: TtsVoice; audioIds: string[]; status: "pending" | "ready" | "failed"; error?: { code: string; message: string } };
-export interface TtsServiceOptions { fetcher?: FetchLike; pollTimeoutMs?: number; pollRetryMs?: number; }
+type Job = { id: string; voice: TtsVoice; audioIds: string[]; status: "pending" | "ready" | "failed"; failedAt?: number; error?: { code: string; message: string } };
+export interface TtsServiceOptions {
+  fetcher?: FetchLike;
+  pollTimeoutMs?: number;
+  pollRetryMs?: number;
+  requestTimeoutMs?: number;
+  failedRetryMs?: number;
+  maxConcurrent?: number;
+  maxPending?: number;
+  cacheTtlMs?: number;
+  maxCacheBytes?: number;
+  pruneIntervalMs?: number;
+}
 export class FptTtsService {
-  private readonly fetcher: FetchLike; private readonly jobs = new Map<string, Job>(); private initialized: Promise<void> | null = null;
+  private readonly fetcher: FetchLike; private readonly jobs = new Map<string, Job>(); private readonly queue: Array<() => void> = [];
+  private initialized: Promise<void> | null = null; private active = 0; private lastPruneAt = 0;
   constructor(private readonly keyFile: string, private readonly cacheDir: string, private readonly speed: number, private readonly options: TtsServiceOptions = {}) { this.fetcher = options.fetcher ?? fetch; }
   async request(textValue: unknown, voiceValue: unknown): Promise<TtsResponse> {
     await this.init(); const text = normalizeTtsText(textValue); const voice = normalizeTtsVoice(voiceValue);
     const parts = splitTtsText(text); const id = ttsCacheKey(text, voice, this.speed); const audioIds = parts.map((part) => ttsCacheKey(part, voice, this.speed));
     if (await this.allCached(audioIds)) return this.ready(audioIds, voice);
-    const old = this.jobs.get(id); if (old) return this.response(old);
+    const old = this.jobs.get(id);
+    if (old?.status === "pending") return this.response(old);
+    if (old?.status === "failed" && Date.now() - (old.failedAt ?? 0) < (this.options.failedRetryMs ?? FAILED_RETRY_MS)) return this.response(old);
+    if (old) this.jobs.delete(id);
+    const pending = [...this.jobs.values()].filter((item) => item.status === "pending").length;
+    if (pending >= (this.options.maxPending ?? MAX_PENDING)) throw new TtsError("TTS_BUSY", "Central speech is busy. Please try again shortly.", 503);
     const job: Job = { id, voice, audioIds, status: "pending" }; this.jobs.set(id, job);
-    void this.run(job, parts).catch((error: unknown) => { const safe = error instanceof TtsError ? error : new TtsError("FPT_UNAVAILABLE", "Central speech is unavailable."); job.status = "failed"; job.error = { code: safe.code, message: safe.message }; });
+    this.schedule(async () => {
+      try { await this.run(job, parts); }
+      catch (error: unknown) { const safe = error instanceof TtsError ? error : new TtsError("FPT_UNAVAILABLE", "Central speech is unavailable."); job.status = "failed"; job.failedAt = Date.now(); job.error = { code: safe.code, message: safe.message }; }
+    });
     return this.response(job);
   }
   async status(id: string): Promise<TtsResponse> { await this.init(); const job = this.jobs.get(id); if (!job) throw new TtsError("UNKNOWN_TTS_REQUEST", "Speech request has expired. Please try again.", 404); return this.response(job); }
   async audio(id: string): Promise<{ path: string; size: number }> {
     await this.init(); if (!/^[a-f0-9]{64}$/.test(id)) throw new TtsError("INVALID_AUDIO", "Invalid audio request.", 400);
     const filePath = path.join(this.cacheDir, id + ".mp3");
-    try { const info = await stat(filePath); return { path: filePath, size: info.size }; } catch { throw new TtsError("AUDIO_NOT_READY", "Audio is not ready.", 404); }
+    try { const info = await stat(filePath); const now = new Date(); await utimes(filePath, now, now); return { path: filePath, size: info.size }; } catch { throw new TtsError("AUDIO_NOT_READY", "Audio is not ready.", 404); }
   }
   private ready(ids: string[], voice: TtsVoice): TtsResponse { return { status: "ready", audioUrls: ids.map((id) => "/heo/api/tts/audio/" + id), voice }; }
   private response(job: Job): TtsResponse {
     if (job.status === "ready") return this.ready(job.audioIds, job.voice);
     if (job.status === "failed") return { status: "failed", error: job.error ?? { code: "FPT_UNAVAILABLE", message: "Central speech is unavailable." }, voice: job.voice };
     return { status: "pending", requestId: job.id, retryAfterMs: this.options.pollRetryMs ?? RETRY_MS, voice: job.voice };
+  }
+  private schedule(task: () => Promise<void>): void {
+    const start = () => {
+      this.active += 1;
+      void task().finally(() => { this.active -= 1; this.queue.shift()?.(); });
+    };
+    if (this.active < (this.options.maxConcurrent ?? MAX_CONCURRENT)) start(); else this.queue.push(start);
   }
   private async run(job: Job, parts: string[]): Promise<void> {
     const key = await this.readKey();
@@ -79,14 +111,16 @@ export class FptTtsService {
     if (url.protocol !== "https:") throw new TtsError("FPT_BAD_URL", "Central speech returned an invalid audio URL.", 502);
     const deadline = Date.now() + (this.options.pollTimeoutMs ?? 120000); let wait = this.options.pollRetryMs ?? RETRY_MS;
     while (Date.now() < deadline) {
-      const audio = await this.fetchSafe(url.href, undefined, true); const type = audio.headers.get("content-type")?.toLowerCase() ?? "";
+      const remaining = Math.max(1, deadline - Date.now());
+      const audio = await this.fetchSafe(url.href, undefined, true, Math.min(this.options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS, remaining)); const type = audio.headers.get("content-type")?.toLowerCase() ?? "";
       if (audio.ok && (type.startsWith("audio/") || type === "application/octet-stream" || type === "")) { const bytes = Buffer.from(await audio.arrayBuffer()); if (bytes.length) return bytes; }
       await new Promise((resolve) => setTimeout(resolve, wait)); wait = Math.min(5000, Math.round(wait * 1.35));
     }
     throw new TtsError("FPT_TIMEOUT", "Central speech took too long to become available.", 504);
   }
-  private async fetchSafe(url: string, init?: RequestInit, polling = false): Promise<Response> {
-    try { return await this.fetcher(url, init); } catch { if (polling) return new Response(null, { status: 503 }); throw new TtsError("FPT_UNAVAILABLE", "Central speech is unavailable."); }
+  private async fetchSafe(url: string, init?: RequestInit, polling = false, timeoutMs = this.options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS): Promise<Response> {
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try { return await this.fetcher(url, { ...init, signal: controller.signal }); } catch { if (polling) return new Response(null, { status: 503 }); throw new TtsError("FPT_UNAVAILABLE", "Central speech is unavailable."); } finally { clearTimeout(timer); }
   }
   private async readKey(): Promise<string> {
     if (!this.keyFile) throw new TtsError("FPT_NOT_CONFIGURED", "Central speech is not configured.", 503);
@@ -96,14 +130,32 @@ export class FptTtsService {
   private async allCached(ids: string[]): Promise<boolean> { for (const id of ids) if (!(await this.has(id))) return false; return true; }
   private async write(id: string, audio: Buffer): Promise<void> {
     const destination = path.join(this.cacheDir, id + ".mp3"); const temporary = destination + "." + randomUUID() + ".tmp";
-    await writeFile(temporary, audio); try { await rename(temporary, destination); } catch { await unlink(temporary).catch(() => undefined); }
+    await writeFile(temporary, audio);
+    try { await rename(temporary, destination); }
+    catch (error) { await unlink(temporary).catch(() => undefined); if (!(await this.has(id))) throw error; }
+    await this.maybePrune();
   }
-  private async init(): Promise<void> { if (!this.initialized) this.initialized = mkdir(this.cacheDir, { recursive: true }).then(() => this.prune()); await this.initialized; }
-  private async prune(): Promise<void> {
-    const now = Date.now(); let files: { name: string; size: number; mtime: number }[] = [];
-    for (const name of await readdir(this.cacheDir).catch(() => [])) if (name.endsWith(".mp3")) try { const info = await stat(path.join(this.cacheDir, name)); files.push({ name, size: info.size, mtime: info.mtimeMs }); } catch { /* concurrent write */ }
-    for (const file of files.filter((item) => now - item.mtime > TTL_MS)) await unlink(path.join(this.cacheDir, file.name)).catch(() => undefined);
-    files = files.filter((item) => now - item.mtime <= TTL_MS).sort((a, b) => b.mtime - a.mtime); let total = files.reduce((sum, item) => sum + item.size, 0);
-    for (const file of files.reverse()) { if (total <= MAX_CACHE_BYTES) break; await unlink(path.join(this.cacheDir, file.name)).catch(() => undefined); total -= file.size; }
+  private async init(): Promise<void> { if (!this.initialized) this.initialized = mkdir(this.cacheDir, { recursive: true }).then(() => this.prune(true)); await this.initialized; }
+  private async maybePrune(): Promise<void> { if (Date.now() - this.lastPruneAt >= (this.options.pruneIntervalMs ?? PRUNE_INTERVAL_MS)) await this.prune(); else await this.enforceSize(); }
+  private async prune(force = false): Promise<void> {
+    if (!force && Date.now() - this.lastPruneAt < (this.options.pruneIntervalMs ?? PRUNE_INTERVAL_MS)) return;
+    this.lastPruneAt = Date.now();
+    const now = Date.now(); const files = await this.listCacheFiles();
+    const ttl = this.options.cacheTtlMs ?? TTL_MS;
+    for (const file of files.filter((item) => now - item.mtime > ttl)) await unlink(path.join(this.cacheDir, file.name)).catch(() => undefined);
+    await this.enforceSize(files.filter((item) => now - item.mtime <= ttl));
+  }
+  private async enforceSize(existing?: { name: string; size: number; mtime: number }[]): Promise<void> {
+    const files = existing ?? await this.listCacheFiles();
+    files.sort((a, b) => b.mtime - a.mtime); let total = files.reduce((sum, item) => sum + item.size, 0);
+    for (const file of files.reverse()) { if (total <= (this.options.maxCacheBytes ?? MAX_CACHE_BYTES)) break; await unlink(path.join(this.cacheDir, file.name)).catch(() => undefined); total -= file.size; }
+  }
+  private async listCacheFiles(): Promise<{ name: string; size: number; mtime: number }[]> {
+    const files: { name: string; size: number; mtime: number }[] = [];
+    for (const name of await readdir(this.cacheDir).catch(() => [])) {
+      if (!name.endsWith(".mp3")) continue;
+      try { const info = await stat(path.join(this.cacheDir, name)); files.push({ name, size: info.size, mtime: info.mtimeMs }); } catch { /* concurrent prune */ }
+    }
+    return files;
   }
 }

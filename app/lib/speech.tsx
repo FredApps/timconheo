@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TtsResponse, TtsVoice } from "../../shared/types";
+import { finishSpeechIfCurrent } from "./speech-control";
 
 const STORAGE_KEY = "tch-tts-voice";
 const FALLBACK_MESSAGE = "Central voice unavailable — using your device voice.";
@@ -89,16 +90,16 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
         if (token !== generation.current) return;
         await TextToSpeech.stop();
         await TextToSpeech.speak({ text, lang: "vi-VN", rate: 0.82, pitch: 1, volume: 1 });
-        if (token === generation.current) onEnd?.();
-      }).catch(() => onEnd?.());
+        finishSpeechIfCurrent(token, generation.current, onEnd);
+      }).catch(() => finishSpeechIfCurrent(token, generation.current, onEnd));
       return;
     }
-    if (!("speechSynthesis" in window)) { onEnd?.(); return; }
+    if (!("speechSynthesis" in window)) { finishSpeechIfCurrent(token, generation.current, onEnd); return; }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "vi-VN"; utterance.rate = 0.82;
-    utterance.onend = () => { if (token === generation.current) onEnd?.(); };
-    utterance.onerror = () => { if (token === generation.current) onEnd?.(); };
+    utterance.onend = () => finishSpeechIfCurrent(token, generation.current, onEnd);
+    utterance.onerror = () => finishSpeechIfCurrent(token, generation.current, onEnd);
     const voices = window.speechSynthesis.getVoices();
     utterance.voice = voices.find((item) => item.lang.toLowerCase().startsWith("vi")) ?? null;
     window.speechSynthesis.speak(utterance);
