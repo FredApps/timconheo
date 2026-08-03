@@ -14,9 +14,10 @@ import {
   validateUsername,
   type AppError,
 } from "./auth.js";
-import { config } from "./config.js";
+import { config, paths } from "./config.js";
 import { HeoDatabase } from "./database.js";
 import { forgiveBacklog, packQueue } from "./scheduler.js";
+import { FptTtsService } from "./tts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/server/server.js -> dist/client
@@ -25,6 +26,7 @@ const clientDir = path.resolve(here, "../client");
 const db = new HeoDatabase();
 const auth = new AuthService(db);
 const scheduler = fsrs({ enable_fuzz: true, enable_short_term: true });
+const tts = new FptTtsService(config.fptKeyFile, paths.ttsCache, config.fptTtsSpeed, { pollTimeoutMs: config.ttsPollTimeoutMs });
 
 /**
  * Seed the first account so a fresh install is usable immediately. Only ever
@@ -292,6 +294,24 @@ router.post("/api/tones", auth.requireUser, (req: Request, res: Response) => {
   });
   res.json({ tones: db.listTones(req.user!.id) });
 });
+
+router.post("/api/tts", auth.requireUser, asyncRoute(async (req, res) => {
+  const response = await tts.request(req.body?.text, req.body?.voice);
+  res.status(response.status === "pending" ? 202 : 200).json(response);
+}));
+
+router.get("/api/tts/:id", auth.requireUser, asyncRoute(async (req, res) => {
+  const response = await tts.status(String(req.params.id));
+  res.status(response.status === "failed" ? 503 : response.status === "pending" ? 202 : 200).json(response);
+}));
+
+router.get("/api/tts/audio/:id", auth.requireUser, asyncRoute(async (req, res) => {
+  const audio = await tts.audio(String(req.params.id));
+  res.type("audio/mpeg");
+  res.setHeader("Cache-Control", "private, max-age=2592000");
+  res.setHeader("Content-Length", String(audio.size));
+  res.sendFile(audio.path);
+}));
 
 router.get("/api/health", (_req: Request, res: Response) => {
   res.json({ ok: true, version: config.version });

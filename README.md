@@ -15,7 +15,7 @@ Live at [ayrien.se/heo](https://ayrien.se/heo/).
 
 ## Architecture
 
-The browser or Android WebView talks to an Express server backed by SQLite. IIS reverse-proxies `/heo` to the Node process. The client owns presentation, speech, pitch capture, difficulty estimates, and local language preference; the server owns sessions, words, progress, cards, queue packing, and review scheduling.
+The browser or Android WebView talks to an Express server backed by SQLite. IIS reverse-proxies /heo to the Node process. The client owns presentation, fallback device speech, pitch capture, difficulty estimates, and local preferences; the server owns sessions, words, progress, cards, queue packing, review scheduling, and FPT.AI speech generation.
 
 ```text
 browser / Android WebView
@@ -76,7 +76,7 @@ Android signing configuration belongs in the local secrets directory and must no
 
 ## Data and privacy
 
-Imported text is stored with the signed-in account on this server and is not sent to a third party by the application. Bundled readings include source and licence metadata. Audio uses the device's `vi-VN` system voice and is not presented as a studio Đà Nẵng recording.
+Imported text is stored with the signed-in account on this server. When playback is requested, the selected text is sent to FPT.AI to generate audio; the app uses FPT.AI generic Central Vietnamese My An or Gia Huy voices and does not present them as studio Da Nang recordings. If FPT is unavailable or slow, playback falls back to the device vi-VN voice. FPT usage is subject to its character quota and request limits.
 
 The selected traditional-text variants and attribution decisions are recorded in [CONTENT_SOURCES.md](CONTENT_SOURCES.md). Rendered source lines are protected against missing-token regressions by the corpus test.
 

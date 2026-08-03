@@ -28,10 +28,14 @@ export const config = {
   // Accounts are created with `npm run admin`.
   allowSignups: bool(process.env.HEO_ALLOW_SIGNUPS, false),
   version: process.env.npm_package_version ?? "0.5.0",
+  fptKeyFile: process.env.HEO_FPT_KEY_FILE ?? "",
+  fptTtsSpeed: int(process.env.HEO_FPT_TTS_SPEED, -1, -3, 3),
+  ttsPollTimeoutMs: int(process.env.HEO_FPT_POLL_TIMEOUT_MS, 120000, 5000, 120000),
 };
 
 export const paths = {
   database: path.join(config.dataDir, "timconheo.sqlite3"),
   backups: path.join(config.dataDir, "backups"),
+  ttsCache: path.join(config.dataDir, "tts-cache"),
 };
 

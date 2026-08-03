@@ -10,3 +10,9 @@ export interface WordRecord { entry: string; gloss: string; status: WordStatus; 
 export interface ForgivenessNotice { message: string; }
 export interface QueueResponse { cards: CardRecord[]; budgetMs: number; serverNow: number; forgiveness: ForgivenessNotice | null; newCount: number; }
 export interface ApiError { error: { code: string; message: string }; }
+export type TtsVoice = "myan" | "giahuy";
+export type TtsStatus = "ready" | "pending" | "failed";
+export interface TtsReadyResponse { status: "ready"; audioUrls: string[]; voice: TtsVoice; }
+export interface TtsPendingResponse { status: "pending"; requestId: string; retryAfterMs: number; voice: TtsVoice; }
+export interface TtsFailedResponse { status: "failed"; error: { code: string; message: string }; voice: TtsVoice; }
+export type TtsResponse = TtsReadyResponse | TtsPendingResponse | TtsFailedResponse;

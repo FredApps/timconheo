@@ -7,7 +7,7 @@ import { STORIES } from "./data";
 import { parseHash } from "./lib/hash";
 import { rankStories } from "./lib/difficulty";
 import { LangProvider, useLang } from "./i18n";
-import { AppHeader, BottomNav, Toast } from "./components/ui";
+import { AppHeader, BottomNav, Toast } from "./components/ui"; import { SpeechProvider } from "./lib/speech";
 import HomeView from "./views/HomeView";
 import LibraryView from "./views/LibraryView";
 import ReaderView from "./views/ReaderView";
@@ -41,4 +41,4 @@ function AppInner({ user, onSignOut }: { user: User; onSignOut: () => Promise<vo
   const cycleTheme = () => setTheme((value) => value === "system" ? "light" : value === "light" ? "dark" : "system");
   return <div className="app-shell">{view !== "reader" && <AppHeader currentView={view} onNavigate={navigate} theme={theme} onTheme={cycleTheme} user={user} onSignOut={onSignOut} />}{view === "home" && <HomeView ranked={ranked} knownCount={words.filter((word) => word.status === "known").length} syllables={learnerSyllables} sessions={sessions} completedStories={completed} onRead={read} onNavigate={navigate} />}{view === "library" && <LibraryView ranked={ranked} onRead={read} />}{view === "reader" && <ReaderView story={story} estimate={selectedEstimate} statuses={statuses} onBack={() => navigate("library")} onRemember={remember} onStatus={setStatus} onComplete={() => void completeStory(story.id)} />}{view === "review" && <ReviewView />}{view === "tones" && <TonesView />}{view === "garden" && <GardenView knownCount={words.filter((word) => word.status === "known").length} completed={completed.length} />}{view === "words" && <WordsView words={words} onStatus={setStatus} />}{view === "import" && <ImportView imports={imports} onSaved={refresh} onOpen={read} />}{view === "about" && <AboutView />}{view !== "reader" && <BottomNav currentView={view} onNavigate={navigate} />}{toast && <Toast message={toast} />}</div>;
 }
-export default function App(props: { user: User; onSignOut: () => Promise<void> }) { return <LangProvider><AppInner {...props} /></LangProvider>; }
+export default function App(props: { user: User; onSignOut: () => Promise<void> }) { return <LangProvider><SpeechProvider><AppInner {...props} /></SpeechProvider></LangProvider>; }
