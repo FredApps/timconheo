@@ -78,6 +78,8 @@ Android signing configuration belongs in the local secrets directory and must no
 
 Imported text is stored with the signed-in account on this server and is not sent to a third party by the application. Bundled readings include source and licence metadata. Audio uses the device's `vi-VN` system voice and is not presented as a studio Đà Nẵng recording.
 
+The selected traditional-text variants and attribution decisions are recorded in [CONTENT_SOURCES.md](CONTENT_SOURCES.md). Rendered source lines are protected against missing-token regressions by the corpus test.
+
 ## Contributing and license
 
 See [CONTRIBUTORS.md](CONTRIBUTORS.md). Keep secrets and generated build output out of commits, run the verification commands before pushing, and document user-facing changes in [CHANGELOG.md](CHANGELOG.md).

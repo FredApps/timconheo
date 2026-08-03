@@ -8,6 +8,7 @@
 - Added a server-side due-card queue with daily new-card caps, relative-overdueness packing, real-clock review sessions, forgiveness after long inactivity, and FSRS short-term learning.
 - Reworked tone feedback around normalized full pitch contours, silence detection, and a real five-choice exercise while preserving the mả/mã demonstration.
 - Added regression tests, architecture documentation, bilingual metadata, and GPLv3 contributor/project documentation.
+- Corrected truncated source lines across the shipped readings, restored the complete selected folk variants, and fixed attribution for *Mẹ yêu không nào*.
 
 ## 0.4.0 — 2026-08-02
 
