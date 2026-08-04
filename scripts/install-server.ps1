@@ -55,6 +55,19 @@ foreach ($file in @("package.json", "package-lock.json", "index.html", "vite.con
   Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination (Join-Path $AppDir $file) -Force
 }
 
+
+# Keep the health endpoint tied to the exact source revision that was installed.
+$deployedCommit = (& git -C $projectRoot rev-parse HEAD).Trim()
+if ($deployedCommit -and (Test-Path "$AppDir\.env")) {
+  $envPath = "$AppDir\.env"
+  $envText = Get-Content -LiteralPath $envPath -Raw
+  if ($envText -match "(?m)^HEO_COMMIT=") {
+    $envText = [regex]::Replace($envText, "(?m)^HEO_COMMIT=.*$", "HEO_COMMIT=$deployedCommit")
+  } else {
+    $envText = $envText.TrimEnd() + [Environment]::NewLine + "HEO_COMMIT=$deployedCommit" + [Environment]::NewLine
+  }
+  Set-Content -LiteralPath $envPath -Value $envText -Encoding ASCII
+}
 Push-Location $AppDir
 try {
   # Vite and tsc write progress to stderr even on success. Under
