@@ -1,0 +1,8 @@
+dist/
+android/
+node_modules/
+coverage/
+.codex-transfer/
+corpus/local/
+package-lock.json
+app/data/freq-core.json

@@ -29,11 +29,16 @@ html = html.replace(/(src|href)="\/assets\//g, '$1="./assets/');
 
 // Same for the app manifest: absolute https://ayrien.se/heo/... breaks the
 // Android build, which has no network guarantee and a different origin.
-html = html.replace(/href="https:\/\/ayrien\.se\/heo\/manifest\.webmanifest"/g, 'href="./manifest.webmanifest"');
+html = html.replace(
+  /href="https:\/\/ayrien\.se\/heo\/manifest\.webmanifest"/g,
+  'href="./manifest.webmanifest"',
+);
 
 const remainingAbsolute = html.match(/(?:src|href)="\/(?!\/)[^"]*"/g);
 if (remainingAbsolute) {
-  throw new Error(`Static export left server-absolute URLs that break under /heo/: ${remainingAbsolute.join(", ")}`);
+  throw new Error(
+    `Static export left server-absolute URLs that break under /heo/: ${remainingAbsolute.join(", ")}`,
+  );
 }
 
 const outputDirectory = resolve(projectRoot, "dist", "client");

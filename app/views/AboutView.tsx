@@ -1,4 +1,46 @@
-import { BookOpenText, Languages, Sprout } from "lucide-react";
-import { T } from "../i18n";
-import { PigMark } from "../components/ui";
-export default function AboutView() { return <main className="page feature-page about-page"><section className="about-hero"><PigMark /><p className="eyebrow"><T k="app.title" /></p><h1><T k="about.title" /></h1><p><T k="about.body" /></p></section><div className="about-grid"><article className="paper-card"><Sprout size={22} /><h2><T k="about.noPressure" /></h2><p><T k="about.noPressureBody" /></p></article><article className="paper-card"><Languages size={22} /><h2><T k="about.honest" /></h2><p><T k="about.honestBody" /></p></article><article className="paper-card"><BookOpenText size={22} /><h2><T k="about.open" /></h2><p><T k="about.openBody" /></p></article></div><p className="approx-note">FPT.AI provides the selectable My An and Gia Huy Central Vietnamese voices. Playback text is sent to FPT.AI; the app keeps the API key on the server.</p><p className="build-note">v0.5.0 · GPLv3-only</p></main>; }
+import { BookOpenText, Languages, Sparkles, Sprout } from "lucide-react";
+import { T, useT } from "../i18n";
+import { PigMark } from "../components/PigMark";
+import { APP_VERSION } from "../version";
+
+export default function AboutView() {
+  const t = useT();
+  return (
+    <main className="page feature-page about-page">
+      <section className="about-hero">
+        <PigMark />
+        <T as="p" k="app.title" className="eyebrow" />
+        <T as="h1" k="about.title" />
+        <T as="p" k="about.body" />
+      </section>
+
+      <div className="about-grid">
+        <article className="paper-card">
+          <Sprout size={22} aria-hidden="true" />
+          <T as="h2" k="about.noPressure" />
+          <T as="p" k="about.noPressureBody" />
+        </article>
+        <article className="paper-card">
+          <Languages size={22} aria-hidden="true" />
+          <T as="h2" k="about.honest" />
+          <T as="p" k="about.honestBody" />
+        </article>
+        <article className="paper-card">
+          <Sparkles size={22} aria-hidden="true" />
+          <T as="h2" k="about.classifiers" />
+          <T as="p" k="about.classifiersBody" />
+        </article>
+        <article className="paper-card">
+          <BookOpenText size={22} aria-hidden="true" />
+          <T as="h2" k="about.open" />
+          <T as="p" k="about.openBody" />
+        </article>
+      </div>
+
+      <p className="approx-note">
+        <T k="speech.about" />
+      </p>
+      <p className="build-note">{t("about.version", { version: APP_VERSION })} · GPL-3.0-only</p>
+    </main>
+  );
+}

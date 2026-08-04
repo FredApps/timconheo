@@ -14,6 +14,9 @@ import type {
 } from "../shared/types.js";
 import { paths } from "./config.js";
 
+/** How many tone attempts are kept per user. See {@link HeoDatabase.trimTones}. */
+export const MAX_TONE_ATTEMPTS = 500;
+
 export interface UserAuthRecord {
   user: User;
   passwordHash: string;
@@ -143,9 +146,8 @@ export class HeoDatabase {
   }
 
   getUserAuth(usernameNorm: string): UserAuthRecord | null {
-    const row = this.db
-      .prepare("SELECT * FROM users WHERE username_norm = ?")
-      .get(usernameNorm) as Record<string, unknown> | undefined;
+    const row = this.db.prepare("SELECT * FROM users WHERE username_norm = ?").get(usernameNorm) as
+      Record<string, unknown> | undefined;
     if (!row) return null;
     return {
       user: toUser(row),
@@ -156,15 +158,15 @@ export class HeoDatabase {
 
   getUser(id: string): User | null {
     const row = this.db.prepare("SELECT * FROM users WHERE id = ?").get(id) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return row ? toUser(row) : null;
   }
 
   listUsers(): User[] {
-    const rows = this.db
-      .prepare("SELECT * FROM users ORDER BY created_at")
-      .all() as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM users ORDER BY created_at").all() as Record<
+      string,
+      unknown
+    >[];
     return rows.map(toUser);
   }
 
@@ -213,9 +215,8 @@ export class HeoDatabase {
   }
 
   getSession(tokenHash: string): { id: string; user: User; lastSeen: number } | null {
-    const row = this.db
-      .prepare("SELECT * FROM sessions WHERE token_hash = ?")
-      .get(tokenHash) as SessionRow | undefined;
+    const row = this.db.prepare("SELECT * FROM sessions WHERE token_hash = ?").get(tokenHash) as
+      SessionRow | undefined;
     if (!row) return null;
     if (row.expires_at <= Date.now()) {
       this.deleteSessionByHash(tokenHash);
@@ -244,7 +245,8 @@ export class HeoDatabase {
 
   getState(userId: string): UserState {
     return {
-      words: this.listWords(userId), progress: this.listProgress(userId),
+      words: this.listWords(userId),
+      progress: this.listProgress(userId),
       imports: this.listImports(userId),
       tones: this.listTones(userId),
     };
@@ -265,9 +267,8 @@ export class HeoDatabase {
   }
 
   getWord(userId: string, entry: string): WordRecord | null {
-    const row = this.db
-      .prepare("SELECT * FROM words WHERE user_id = ? AND entry = ?")
-      .get(userId, entry) as Record<string, unknown> | undefined;
+    const row = this.db.prepare("SELECT * FROM words WHERE user_id = ? AND entry = ?").get(userId, entry) as
+      Record<string, unknown> | undefined;
     if (!row) return null;
     return {
       entry: String(row.entry),
@@ -288,15 +289,7 @@ export class HeoDatabase {
            gloss = excluded.gloss, status = excluded.status,
            times_seen = excluded.times_seen, updated_at = excluded.updated_at`,
       )
-      .run(
-        userId,
-        word.entry,
-        word.gloss,
-        word.status,
-        word.timesSeen,
-        word.firstSeen,
-        word.updatedAt,
-      );
+      .run(userId, word.entry, word.gloss, word.status, word.timesSeen, word.firstSeen, word.updatedAt);
   }
 
   setWordStatus(userId: string, entry: string, status: WordStatus): void {
@@ -306,9 +299,10 @@ export class HeoDatabase {
   }
 
   listCards(userId: string): CardRecord[] {
-    const rows = this.db
-      .prepare("SELECT * FROM cards WHERE user_id = ? ORDER BY due")
-      .all(userId) as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM cards WHERE user_id = ? ORDER BY due").all(userId) as Record<
+      string,
+      unknown
+    >[];
     return rows.map((row) => ({
       id: String(row.id),
       entry: String(row.entry),
@@ -321,12 +315,26 @@ export class HeoDatabase {
   }
 
   listCardsDue(userId: string, now: number): CardRecord[] {
-    const rows = this.db.prepare("SELECT * FROM cards WHERE user_id = ? AND due <= ? ORDER BY due").all(userId, now) as Record<string, unknown>[];
-    return rows.map((row) => ({ id: String(row.id), entry: String(row.entry), gloss: String(row.gloss), sourceSentenceId: String(row.source_sentence_id), card: JSON.parse(String(row.card_json)), due: Number(row.due), updatedAt: Number(row.updated_at) }));
+    const rows = this.db
+      .prepare("SELECT * FROM cards WHERE user_id = ? AND due <= ? ORDER BY due")
+      .all(userId, now) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      id: String(row.id),
+      entry: String(row.entry),
+      gloss: String(row.gloss),
+      sourceSentenceId: String(row.source_sentence_id),
+      card: JSON.parse(String(row.card_json)),
+      due: Number(row.due),
+      updatedAt: Number(row.updated_at),
+    }));
   }
 
   countNewCardsSince(userId: string, since: number): number {
-    const row = this.db.prepare("SELECT COUNT(*) AS n FROM cards WHERE user_id = ? AND updated_at >= ? AND json_extract(card_json, '$.reps') = 1").get(userId, since) as { n: number };
+    const row = this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM cards WHERE user_id = ? AND updated_at >= ? AND json_extract(card_json, '$.reps') = 1",
+      )
+      .get(userId, since) as { n: number };
     return Number(row.n);
   }
 
@@ -335,17 +343,23 @@ export class HeoDatabase {
   }
 
   getSettings(userId: string): Record<string, number> {
-    const row = this.db.prepare("SELECT settings_json FROM users WHERE id = ?").get(userId) as { settings_json?: string } | undefined;
-    try { return row?.settings_json ? JSON.parse(row.settings_json) as Record<string, number> : {}; } catch { return {}; }
+    const row = this.db.prepare("SELECT settings_json FROM users WHERE id = ?").get(userId) as
+      { settings_json?: string } | undefined;
+    try {
+      return row?.settings_json ? (JSON.parse(row.settings_json) as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
   }
 
   setSettings(userId: string, settings: Record<string, number>): void {
-    this.db.prepare("UPDATE users SET settings_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(settings), new Date().toISOString(), userId);
+    this.db
+      .prepare("UPDATE users SET settings_json = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(settings), new Date().toISOString(), userId);
   }
   getCard(userId: string, id: string): CardRecord | null {
-    const row = this.db
-      .prepare("SELECT * FROM cards WHERE user_id = ? AND id = ?")
-      .get(userId, id) as Record<string, unknown> | undefined;
+    const row = this.db.prepare("SELECT * FROM cards WHERE user_id = ? AND id = ?").get(userId, id) as
+      Record<string, unknown> | undefined;
     if (!row) return null;
     return {
       id: String(row.id),
@@ -380,9 +394,10 @@ export class HeoDatabase {
   }
 
   listProgress(userId: string): ProgressRecord[] {
-    const rows = this.db
-      .prepare("SELECT * FROM progress WHERE user_id = ?")
-      .all(userId) as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM progress WHERE user_id = ?").all(userId) as Record<
+      string,
+      unknown
+    >[];
     return rows.map((row) => ({
       storyId: String(row.story_id),
       sentencesRead: JSON.parse(String(row.sentences_json)),
@@ -423,15 +438,10 @@ export class HeoDatabase {
     }));
   }
 
-  addImport(
-    userId: string,
-    input: { title: string; raw: string; difficulty: number },
-  ): ImportRecord {
+  addImport(userId: string, input: { title: string; raw: string; difficulty: number }): ImportRecord {
     const importedAt = Date.now();
     this.db
-      .prepare(
-        "INSERT INTO imports (user_id, title, raw, difficulty, imported_at) VALUES (?, ?, ?, ?, ?)",
-      )
+      .prepare("INSERT INTO imports (user_id, title, raw, difficulty, imported_at) VALUES (?, ?, ?, ?, ?)")
       .run(userId, input.title, input.raw, input.difficulty, importedAt);
     const row = this.db
       .prepare("SELECT * FROM imports WHERE user_id = ? ORDER BY id DESC LIMIT 1")
@@ -468,5 +478,30 @@ export class HeoDatabase {
         "INSERT INTO tone_attempts (user_id, tone, syllable, score, created_at) VALUES (?, ?, ?, ?, ?)",
       )
       .run(userId, input.tone, input.syllable, input.score, Date.now());
+    this.trimTones(userId);
+  }
+
+  /**
+   * Tone attempts are a practice trail, not a record: only the recent shape of
+   * someone's accuracy is useful, and the table would otherwise grow without
+   * bound from a drill you can run several times a minute.
+   */
+  trimTones(userId: string, keep = MAX_TONE_ATTEMPTS): void {
+    this.db
+      .prepare(
+        `DELETE FROM tone_attempts
+          WHERE user_id = ?
+            AND id NOT IN (
+              SELECT id FROM tone_attempts WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?
+            )`,
+      )
+      .run(userId, userId, keep);
+  }
+
+  countTones(userId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM tone_attempts WHERE user_id = ?").get(userId) as {
+      n: number;
+    };
+    return Number(row.n);
   }
 }

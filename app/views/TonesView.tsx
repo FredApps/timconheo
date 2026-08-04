@@ -1,14 +1,115 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Ear, Info, Mic, Play, Volume2 } from "lucide-react";
+import { useState } from "react";
+import { Ear, Info, Play } from "lucide-react";
 import { TONES } from "../data";
-import { T, BiText, useT } from "../i18n";
-import type { StringKey } from "../i18n/strings";
+import { BiText, T, useT } from "../i18n";
 import type { ToneKey } from "../types";
 import { api } from "../lib/api";
-import { detectPitch, normalizeContour, toneFeedback, contourScore } from "../lib/pitch";
 import { useSpeech } from "../lib/speech";
-function ToneCanvas({ reference, attempt }: { reference: number[]; attempt: number[] }) { const ref = useRef<HTMLCanvasElement>(null); useEffect(() => { const canvas = ref.current; if (!canvas) return; const ratio = window.devicePixelRatio || 1; const width = canvas.clientWidth; const height = canvas.clientHeight; canvas.width = width * ratio; canvas.height = height * ratio; const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.scale(ratio, ratio); const draw = (values: number[], color: string, dashed = false) => { ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = dashed ? 3 : 4; ctx.setLineDash(dashed ? [7, 7] : []); values.forEach((value, index) => { const x = 12 + index / Math.max(values.length - 1, 1) * (width - 24); const y = height - 15 - value * (height - 30); if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); }; draw(reference, "#a53c32"); if (attempt.length) draw(attempt, "#24342d", true); }, [reference, attempt]); return <canvas ref={ref} className="tone-canvas" aria-label="Tone contour" />; }
-function ToneLab() { const { speak } = useSpeech(); const [selectedTone, setSelectedTone] = useState<ToneKey>("hoi-nga"); const [attempt, setAttempt] = useState<number[]>([]); const [recording, setRecording] = useState(false); const [messageKey, setMessageKey] = useState<StringKey>("tones.record"); const stopRef = useRef<(() => void) | null>(null); const tone = TONES.find((item) => item.key === selectedTone)!; const t = useT(); const stop = useCallback(() => { stopRef.current?.(); stopRef.current = null; }, []);
-  const start = async () => { if (recording) { stop(); return; } if (!navigator.mediaDevices?.getUserMedia) { setMessageKey("tones.tryAgain"); return; } try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const audioContext = new AudioContext(); const source = audioContext.createMediaStreamSource(stream); const analyser = audioContext.createAnalyser(); analyser.fftSize = 2048; source.connect(analyser); const samples = new Float32Array(analyser.fftSize); const pitches: number[] = []; let active = true; let lastVoice = Date.now(); let frame = 0; setAttempt([]); setRecording(true); const finish = () => { if (!active) return; active = false; stream.getTracks().forEach((track) => track.stop()); void audioContext.close(); setRecording(false); const normalized = normalizeContour(pitches); setAttempt(normalized); const score = contourScore(tone.contour, normalized); setMessageKey(toneFeedback(tone.contour, normalized)); void api.addTone(tone.key, tone.example, score); }; const capture = () => { if (!active) return; analyser.getFloatTimeDomainData(samples); const pitch = frame % 3 === 0 ? detectPitch(samples, audioContext.sampleRate) : null; if (pitch) { pitches.push(pitch); lastVoice = Date.now(); } frame += 1; requestAnimationFrame(capture); if (Date.now() - lastVoice > 900 && pitches.length > 5) finish(); }; stopRef.current = finish; capture(); window.setTimeout(finish, 9000); } catch { setRecording(false); setMessageKey("tones.tryAgain"); } };
-  useEffect(() => () => stopRef.current?.(), []); return <div className="tone-lab paper-card"><div className="tone-tabs" role="tablist" aria-label="Choose tone">{TONES.map((item) => <button key={item.key} role="tab" aria-selected={selectedTone === item.key} className={selectedTone === item.key ? "active" : ""} onClick={() => { setSelectedTone(item.key); setAttempt([]); }}><span>{item.example}</span><small><BiText value={item.label} /></small></button>)}</div><div className="tone-workbench"><div className="tone-syllable"><strong lang="vi">{tone.example}</strong><small><BiText value={tone.description} /></small><button className="round-audio" onClick={() => speak(tone.example)} aria-label={t("tones.listen")}><Volume2 size={20} /></button></div><div className="tone-chart-wrap"><div className="chart-labels"><span>high</span><span>low</span></div><ToneCanvas reference={tone.contour} attempt={attempt} /></div><div className="record-area"><button className={"record-button" + (recording ? " recording" : "")} onClick={() => void start()}><Mic size={22} /><T k={recording ? "tones.stop" : "tones.record"} /></button><p><T k={messageKey} /></p></div></div></div>; }
-export default function TonesView() { const { speak } = useSpeech(); const [heard, setHeard] = useState<string | null>(null); const [challenge, setChallenge] = useState<ToneKey | null>(null); const [result, setResult] = useState<boolean | null>(null); const playChallenge = () => { const tone = TONES[Math.floor(Math.random() * TONES.length)]; setChallenge(tone.key); setResult(null); speak(tone.example); }; return <main className="page feature-page"><section className="feature-heading"><div><p className="eyebrow"><T k="nav.tones" /></p><h1><T k="tones.title" /></h1><p><T k="tones.intro" /></p></div><div className="tone-count"><strong>{TONES.length}</strong><span><T k="nav.tones" /></span></div></section><ToneLab /><section className="perception-card paper-card"><div className="teaser-icon"><Ear size={24} /></div><div><p className="eyebrow"><T k="tones.demo" /></p><h2><T k="tones.demo" /></h2><p><T k="tones.demo" /></p></div><button className="secondary-button" onClick={() => { const choice = Math.random() > 0.5 ? "mả" : "mã"; setHeard(choice); speak(choice); }}><Play size={16} /> <T k="tones.listen" /></button>{heard && <p className="gentle-answer">{heard} — <T k="tones.demo" /></p>}</section><section className="perception-card paper-card"><Info size={20} /><div><h2><T k="tones.check" /></h2><p><T k="tones.choose" /></p></div><button className="secondary-button" onClick={playChallenge}><Play size={16} /> <T k="tones.listen" /></button>{challenge && <div className="pair-buttons">{TONES.map((item) => <button key={item.key} onClick={() => { const correct = item.key === challenge; setResult(correct); void api.addTone(item.key, item.example, correct ? 1 : 0); }}><BiText value={item.label} /></button>)}</div>}{result !== null && <p className="gentle-answer"><T k={result ? "tones.correct" : "tones.tryAgain"} /></p>}</section></main>; }
+import { ToneLab } from "./tones/ToneLab";
+
+export default function TonesView() {
+  const t = useT();
+  const { speak } = useSpeech();
+  const [demoSyllable, setDemoSyllable] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<ToneKey | null>(null);
+  const [answer, setAnswer] = useState<ToneKey | null>(null);
+
+  const playChallenge = () => {
+    const tone = TONES[Math.floor(Math.random() * TONES.length)];
+    setChallenge(tone.key);
+    setAnswer(null);
+    void speak(tone.example.split("/")[0].trim()).catch(() => undefined);
+  };
+
+  const correct = answer !== null && answer === challenge;
+
+  return (
+    <main className="page feature-page">
+      <section className="feature-heading">
+        <div>
+          <T as="p" k="nav.tones" className="eyebrow" />
+          <T as="h1" k="tones.title" />
+          <T as="p" k="tones.intro" />
+        </div>
+        <div className="tone-count">
+          <strong>{TONES.length}</strong>
+          <T k="tones.count" as="span" />
+        </div>
+      </section>
+
+      <ToneLab />
+
+      {/*
+        Two different exercises, deliberately separated. The first has no right
+        answer -- mả and mã genuinely merge here, and pretending otherwise would
+        teach the wrong thing. The second is a real forced choice.
+      */}
+      <section className="perception-card paper-card">
+        <div className="teaser-icon" aria-hidden="true">
+          <Ear size={24} />
+        </div>
+        <div>
+          <T as="h2" k="tones.demoTitle" />
+          <T as="p" k="tones.demoBody" />
+        </div>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            const choice = Math.random() > 0.5 ? "mả" : "mã";
+            setDemoSyllable(choice);
+            void speak(choice).catch(() => undefined);
+          }}
+        >
+          <Play size={16} aria-hidden="true" />
+          <T k="tones.listen" />
+        </button>
+        {demoSyllable && (
+          <p className="gentle-answer" role="status" aria-live="polite">
+            {t("tones.demoHeard", { syllable: demoSyllable })}
+          </p>
+        )}
+      </section>
+
+      <section className="perception-card paper-card">
+        <div className="teaser-icon" aria-hidden="true">
+          <Info size={24} />
+        </div>
+        <div>
+          <T as="h2" k="tones.checkTitle" />
+          <T as="p" k="tones.checkBody" />
+        </div>
+        <button type="button" className="secondary-button" onClick={playChallenge}>
+          <Play size={16} aria-hidden="true" />
+          <T k="tones.checkPlay" />
+        </button>
+
+        {challenge && (
+          <div className="pair-buttons" role="group" aria-label={t("tones.choose")}>
+            {TONES.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                aria-pressed={answer === item.key}
+                disabled={answer !== null}
+                onClick={() => {
+                  setAnswer(item.key);
+                  void api
+                    .addTone(item.key, item.example.split("/")[0].trim(), item.key === challenge ? 1 : 0)
+                    .catch(() => undefined);
+                }}
+              >
+                <BiText value={item.label} />
+              </button>
+            ))}
+          </div>
+        )}
+        {answer !== null && (
+          <p className="gentle-answer" role="status" aria-live="polite">
+            <T k={correct ? "tones.correct" : "tones.tryAgain"} />
+          </p>
+        )}
+      </section>
+    </main>
+  );
+}

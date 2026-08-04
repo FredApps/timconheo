@@ -3,9 +3,20 @@ import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/pr
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { FptTtsService, normalizeTtsText, normalizeTtsVoice, padTtsText, splitTtsText, ttsCacheKey, TtsError } from "../server/tts.js";
+import {
+  FptTtsService,
+  normalizeTtsText,
+  normalizeTtsVoice,
+  padTtsText,
+  splitTtsText,
+  ttsCacheKey,
+  TtsError,
+} from "../../server/tts.js";
 
-async function waitForTerminal(service: FptTtsService, requestId: string): Promise<Awaited<ReturnType<FptTtsService["status"]>>> {
+async function waitForTerminal(
+  service: FptTtsService,
+  requestId: string,
+): Promise<Awaited<ReturnType<FptTtsService["status"]>>> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const result = await service.status(requestId);
     if (result.status !== "pending") return result;
@@ -18,12 +29,18 @@ test("normalizes voices and pads FPT's short-text minimum", () => {
   assert.equal(normalizeTtsText("  má  "), "má");
   assert.equal(normalizeTtsVoice("giahuy"), "giahuy");
   assert.equal(padTtsText("ở").length, 3);
-  assert.throws(() => normalizeTtsText(""), (error: unknown) => error instanceof TtsError && error.code === "INVALID_TEXT");
-  assert.throws(() => normalizeTtsVoice("north"), (error: unknown) => error instanceof TtsError && error.code === "INVALID_VOICE");
+  assert.throws(
+    () => normalizeTtsText(""),
+    (error: unknown) => error instanceof TtsError && error.code === "INVALID_TEXT",
+  );
+  assert.throws(
+    () => normalizeTtsVoice("north"),
+    (error: unknown) => error instanceof TtsError && error.code === "INVALID_VOICE",
+  );
 });
 
 test("splits long text at a word boundary and hashes voice and speed", () => {
-  const text = ("một câu tiếng Việt rất dài ".repeat(300)).trim();
+  const text = "một câu tiếng Việt rất dài ".repeat(300).trim();
   const parts = splitTtsText(text);
   assert.ok(parts.length > 1);
   assert.ok(parts.every((part) => part.length <= 4500));
@@ -36,19 +53,29 @@ test("coalesces async FPT jobs and serves the cached result", async () => {
   const keyFile = path.join(root, "fpt.key");
   await writeFile(keyFile, "test-secret-key");
   const calls: { url: string; init?: RequestInit }[] = [];
-  const fetcher = async (url: string | URL, init?: RequestInit): Promise<Response> => {
+  const fetcher = async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     calls.push({ url: String(url), init });
     if (String(url) === "https://api.fpt.ai/hmi/tts/v5") {
       const headers = init?.headers as Record<string, string>;
       assert.equal(headers.api_key, "test-secret-key");
       assert.equal(headers.voice, "giahuy");
       assert.equal(headers.speed, "-1");
-      return new Response(JSON.stringify({ error: 0, async: "https://audio.fpt.ai/test.mp3" }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ error: 0, async: "https://audio.fpt.ai/test.mp3" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     }
-    return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } });
+    return new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+    });
   };
   try {
-    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, { fetcher, pollRetryMs: 1, pollTimeoutMs: 50 });
+    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, {
+      fetcher,
+      pollRetryMs: 1,
+      pollTimeoutMs: 50,
+    });
     const first = await service.request("má", "giahuy");
     const second = await service.request("má", "giahuy");
     assert.equal(first.status, "pending");
@@ -95,16 +122,25 @@ test("retries a failed job after its backoff expires", async () => {
   const keyFile = path.join(root, "fpt.key");
   await writeFile(keyFile, "test-secret-key");
   let posts = 0;
-  const fetcher = async (url: string | URL): Promise<Response> => {
+  const fetcher = async (url: RequestInfo | URL): Promise<Response> => {
     if (String(url).includes("api.fpt.ai/hmi/tts")) {
       posts += 1;
       if (posts === 1) return new Response(null, { status: 429 });
-      return new Response(JSON.stringify({ error: 0, async: "https://audio.fpt.ai/retry.mp3" }), { status: 200 });
+      return new Response(JSON.stringify({ error: 0, async: "https://audio.fpt.ai/retry.mp3" }), {
+        status: 200,
+      });
     }
-    return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } });
+    return new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+    });
   };
   try {
-    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, { fetcher, failedRetryMs: 0, pollRetryMs: 1 });
+    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, {
+      fetcher,
+      failedRetryMs: 0,
+      pollRetryMs: 1,
+    });
     const first = await service.request("retry me", "myan");
     assert.equal(first.status, "pending");
     const failed = await waitForTerminal(service, first.status === "pending" ? first.requestId : "");
@@ -126,22 +162,34 @@ test("limits concurrent provider work and rejects an overflowing pending queue",
   await writeFile(keyFile, "test-secret-key");
   let posts = 0;
   let releaseFirst: (() => void) | undefined;
-  const firstAudio = new Promise<void>((resolve) => { releaseFirst = resolve; });
-  const fetcher = async (url: string | URL): Promise<Response> => {
+  const firstAudio = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const fetcher = async (url: RequestInfo | URL): Promise<Response> => {
     if (String(url).includes("api.fpt.ai/hmi/tts")) {
       posts += 1;
-      return new Response(JSON.stringify({ error: 0, async: `https://audio.fpt.ai/${posts}.mp3` }), { status: 200 });
+      return new Response(JSON.stringify({ error: 0, async: `https://audio.fpt.ai/${posts}.mp3` }), {
+        status: 200,
+      });
     }
     if (String(url).endsWith("/1.mp3")) await firstAudio;
     return new Response(new Uint8Array([1]), { status: 200, headers: { "content-type": "audio/mpeg" } });
   };
   try {
-    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, { fetcher, maxConcurrent: 1, maxPending: 2, pollRetryMs: 1 });
+    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, {
+      fetcher,
+      maxConcurrent: 1,
+      maxPending: 2,
+      pollRetryMs: 1,
+    });
     const first = await service.request("first request", "myan");
     const second = await service.request("second request", "myan");
     assert.equal(first.status, "pending");
     assert.equal(second.status, "pending");
-    await assert.rejects(() => service.request("overflow request", "myan"), (error: unknown) => error instanceof TtsError && error.code === "TTS_BUSY");
+    await assert.rejects(
+      () => service.request("overflow request", "myan"),
+      (error: unknown) => error instanceof TtsError && error.code === "TTS_BUSY",
+    );
     await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(posts, 1);
     releaseFirst?.();
@@ -157,11 +205,18 @@ test("aborts a stalled outbound provider request", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "tim-con-heo-tts-"));
   const keyFile = path.join(root, "fpt.key");
   await writeFile(keyFile, "test-secret-key");
-  const fetcher = (_url: string | URL, init?: RequestInit): Promise<Response> => new Promise((_resolve, reject) => {
-    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-  });
+  const fetcher = (_url: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {
+        once: true,
+      });
+    });
   try {
-    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, { fetcher, requestTimeoutMs: 5, pollRetryMs: 1 });
+    const service = new FptTtsService(keyFile, path.join(root, "cache"), -1, {
+      fetcher,
+      requestTimeoutMs: 5,
+      pollRetryMs: 1,
+    });
     const pending = await service.request("timeout request", "myan");
     assert.equal(pending.status, "pending");
     const failed = await waitForTerminal(service, pending.status === "pending" ? pending.requestId : "");
@@ -182,12 +237,23 @@ test("prunes expired cache files, enforces the size cap, and touches served audi
   const expiredPath = path.join(cacheDir, `${expiredId}.mp3`);
   await writeFile(expiredPath, new Uint8Array([1]));
   await utimes(expiredPath, new Date(0), new Date(0));
-  const fetcher = async (url: string | URL): Promise<Response> => String(url).includes("api.fpt.ai/hmi/tts")
-    ? new Response(JSON.stringify({ error: 0, async: `https://audio.fpt.ai/${Date.now()}.mp3` }), { status: 200 })
-    : new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } });
+  const fetcher = async (url: RequestInfo | URL): Promise<Response> =>
+    String(url).includes("api.fpt.ai/hmi/tts")
+      ? new Response(JSON.stringify({ error: 0, async: `https://audio.fpt.ai/${Date.now()}.mp3` }), {
+          status: 200,
+        })
+      : new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } });
   try {
-    const service = new FptTtsService(keyFile, cacheDir, -1, { fetcher, cacheTtlMs: 10, maxCacheBytes: 4, pollRetryMs: 1 });
-    await assert.rejects(() => service.audio(expiredId), (error: unknown) => error instanceof TtsError && error.code === "AUDIO_NOT_READY");
+    const service = new FptTtsService(keyFile, cacheDir, -1, {
+      fetcher,
+      cacheTtlMs: 10,
+      maxCacheBytes: 4,
+      pollRetryMs: 1,
+    });
+    await assert.rejects(
+      () => service.audio(expiredId),
+      (error: unknown) => error instanceof TtsError && error.code === "AUDIO_NOT_READY",
+    );
     for (const text of ["cache one", "cache two"]) {
       const pending = await service.request(text, "myan");
       assert.equal(pending.status, "pending");

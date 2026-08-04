@@ -1,6 +1,6 @@
 // Versioned cache name: bumping it evicts everything the previous build cached,
 // including the pre-server static shell.
-const CACHE = "tim-con-heo-shell-v2";
+const CACHE = "tim-con-heo-shell-v0.6.0";
 const SCOPE_PATH = new URL(self.registration.scope).pathname;
 const SHELL = [SCOPE_PATH, `${SCOPE_PATH}manifest.webmanifest`];
 
@@ -11,7 +11,9 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),
   );
   self.clients.claim();
 });

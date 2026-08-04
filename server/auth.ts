@@ -20,7 +20,9 @@ declare global {
 }
 
 export function normalizeUsername(value: unknown): string {
-  return String(value ?? "").trim().toLocaleLowerCase("en-US");
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("en-US");
 }
 
 export function validateUsername(value: unknown): { valid: boolean; username: string; error?: string } {
@@ -37,7 +39,10 @@ export function validatePassword(value: unknown): { valid: boolean; password: st
   return { valid: true, password };
 }
 
-export async function hashPassword(password: string, saltHex?: string): Promise<{ hash: string; salt: string }> {
+export async function hashPassword(
+  password: string,
+  saltHex?: string,
+): Promise<{ hash: string; salt: string }> {
   const salt = saltHex ? Buffer.from(saltHex, "hex") : randomBytes(16);
   const derived = (await scrypt(password.normalize("NFKC"), salt, 64)) as Buffer;
   return { hash: derived.toString("hex"), salt: salt.toString("hex") };
@@ -166,6 +171,7 @@ export function requireSameOrigin(req: Request, res: Response, next: NextFunctio
 
 export class RateLimiter {
   private readonly hits = new Map<string, number[]>();
+  private lastSweepAt = 0;
 
   constructor(
     private readonly windowMs: number,
@@ -174,18 +180,86 @@ export class RateLimiter {
   ) {}
 
   middleware = (req: Request, res: Response, next: NextFunction): void => {
+    const now = Date.now();
+    this.sweep(now);
     const key = this.keyFor(req);
-    const cutoff = Date.now() - this.windowMs;
+    const cutoff = now - this.windowMs;
     const recent = (this.hits.get(key) ?? []).filter((value) => value > cutoff);
     if (recent.length >= this.maxHits) {
       res.setHeader("Retry-After", Math.ceil(this.windowMs / 1000));
-      res.status(429).json({ error: { code: "RATE_LIMITED", message: "Too many attempts. Try again shortly." } });
+      res
+        .status(429)
+        .json({ error: { code: "RATE_LIMITED", message: "Too many attempts. Try again shortly." } });
       return;
     }
-    recent.push(Date.now());
+    recent.push(now);
     this.hits.set(key, recent);
     next();
   };
+
+  /**
+   * Buckets are keyed by IP, so without this the map grows for the lifetime of
+   * the process and never shrinks. Swept opportunistically once per window
+   * rather than on a timer, so an idle server does no work at all.
+   */
+  private sweep(now: number): void {
+    if (now - this.lastSweepAt < this.windowMs) return;
+    this.lastSweepAt = now;
+    const cutoff = now - this.windowMs;
+    for (const [key, values] of this.hits) {
+      const recent = values.filter((value) => value > cutoff);
+      if (recent.length) this.hits.set(key, recent);
+      else this.hits.delete(key);
+    }
+  }
+
+  /** Test seam: how many distinct keys are currently held. */
+  get size(): number {
+    return this.hits.size;
+  }
+}
+
+/**
+ * Conservative headers for an app that serves its own bundle and talks to no
+ * third party from the browser. The FPT round trip happens server-side, so the
+ * connect-src does not need to name it; audio is same-origin because the server
+ * proxies the generated mp3 out of its own cache.
+ */
+export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      // Vite inlines a tiny module-preload shim, and the theme is applied before
+      // paint from an inline style attribute on <body>.
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "media-src 'self' blob:",
+      "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; "),
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  // The tone lab is the only capability the app needs; deny the rest explicitly.
+  res.setHeader(
+    "Permissions-Policy",
+    "microphone=(self), camera=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+  );
+  if (config.secureCookies) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
 }
 
 export interface AppError extends Error {

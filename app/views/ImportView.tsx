@@ -1,15 +1,227 @@
-import { useMemo, useState } from "react";
-import { Check, CloudDownload, Info, Upload } from "lucide-react";
+import { useId, useMemo, useState } from "react";
+import { Check, CloudDownload, Info, Upload, Volume2 } from "lucide-react";
 import type { ImportRecord } from "../lib/api";
-import type { Story } from "../types";
-import { T } from "../i18n"; import { useSpeech } from "../lib/speech";
 import { api } from "../lib/api";
-import { segmentImport, storyFromImport } from "../lib/imports";
+import type { Story } from "../types";
+import { LIMITS } from "../../shared/validation";
+import { T, useT } from "../i18n";
+import { useAsyncAction } from "../lib/async";
 import { estimateStory } from "../lib/difficulty";
-import { Pill, PigMark } from "../components/ui";
-export default function ImportView({ imports, onSaved, onOpen }: { imports: ImportRecord[]; onSaved: () => Promise<void>; onOpen: (story: Story) => void }) {
-  const { speak } = useSpeech(); const [title, setTitle] = useState(""); const [raw, setRaw] = useState(""); const [saved, setSaved] = useState(false); const tokens = useMemo(() => segmentImport(raw), [raw]);
-  const estimate = useMemo(() => estimateStory(storyFromImport({ id: 0, title: title || "Your text", raw, importedAt: 0, difficulty: 0 }), {}, false), [title, raw]);
-  const save = async () => { if (!raw.trim()) return; await api.addImport(title.trim() || "My Vietnamese text", raw.trim(), estimate.score); setSaved(true); await onSaved(); };
-  return <main className="page feature-page import-page"><section className="feature-heading"><div><p className="eyebrow"><T k="nav.import" /></p><h1><T k="import.title" /></h1><p><T k="import.intro" /></p></div><div className="local-only"><CloudDownload size={20} /><span>Account data</span></div></section><section className="import-workspace"><div className="import-form paper-card"><label><T k="import.titleLabel" /><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="A morning by the sea" /></label><label><T k="import.textLabel" /><textarea value={raw} onChange={(event) => { setRaw(event.target.value); setSaved(false); }} placeholder="Paste Vietnamese text here…" rows={10} /></label><div className="import-form-bottom"><span>{tokens.length} tokens · {estimate.band}</span><button className="primary-button" onClick={() => void save()} disabled={!raw.trim()}><Upload size={17} /> <T k="import.save" /></button></div>{saved && <p className="save-confirm"><Check size={16} /> <T k="import.saved" /></p>}</div><div className="import-preview paper-card"><div className="preview-title"><h2>{title || "Your reading"}</h2><Pill tone="ochre">{estimate.band}</Pill></div>{raw ? <div className="preview-tokens">{tokens.map((token, index) => <button key={token + index} title="Listen" onClick={() => speak(token)}>{token}</button>)}</div> : <div className="preview-empty"><PigMark /><p>Preview appears here.</p></div>}<p className="approx-note"><Info size={15} /> Segmentation is approximate.</p><p className="approx-note"><Info size={15} /> Playback sends the selected text to FPT.AI for audio generation.</p></div></section>{imports.length > 0 && <section className="saved-imports"><h2><T k="import.saved" /></h2>{imports.map((item) => <article key={item.id} className="paper-card"><div><strong>{item.title}</strong><p>{item.raw.slice(0, 100)}{item.raw.length > 100 ? "…" : ""}</p></div><div className="saved-actions"><Pill>{item.difficulty}/10</Pill><button className="text-button" onClick={() => onOpen(storyFromImport(item))}><T k="import.open" /></button><button className="text-button" onClick={() => void api.deleteImport(item.id).then(onSaved)}><T k="import.delete" /></button></div></article>)}</section>}</main>;
+import { importStats, segmentImport, splitSentences, storyFromImport } from "../lib/imports";
+import { useSpeech } from "../lib/speech";
+import { AsyncButton, ErrorNote } from "../components/feedback";
+import { PigMark } from "../components/PigMark";
+import { Pill } from "../components/Pill";
+
+export default function ImportView({
+  imports,
+  onSaved,
+  onOpen,
+}: {
+  imports: ImportRecord[];
+  onSaved: () => Promise<void>;
+  onOpen: (story: Story) => void;
+}) {
+  const t = useT();
+  const { speak } = useSpeech();
+  const titleId = useId();
+  const textId = useId();
+  const counterId = useId();
+
+  const [title, setTitle] = useState("");
+  const [raw, setRaw] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  const stats = useMemo(() => importStats(raw), [raw]);
+  const preview = useMemo(
+    () => splitSentences(raw).map((line) => ({ line, tokens: segmentImport(line) })),
+    [raw],
+  );
+  const estimate = useMemo(
+    () =>
+      estimateStory(
+        storyFromImport({ id: 0, title: title || "Your text", raw, importedAt: 0, difficulty: 0 }),
+        {},
+        false,
+      ),
+    [raw, title],
+  );
+
+  const tooLong = raw.length > LIMITS.importText;
+
+  const save = useAsyncAction(async () => {
+    await api.addImport(title.trim() || "My Vietnamese text", raw.trim(), estimate.score);
+    await onSaved();
+    setRaw("");
+    setTitle("");
+  });
+
+  const remove = useAsyncAction(async (id: number) => {
+    await api.deleteImport(id);
+    await onSaved();
+    setConfirmDelete(null);
+  });
+
+  return (
+    <main className="page feature-page import-page">
+      <section className="feature-heading">
+        <div>
+          <T as="p" k="nav.import" className="eyebrow" />
+          <T as="h1" k="import.title" />
+          <T as="p" k="import.intro" />
+        </div>
+        <div className="local-only">
+          <CloudDownload size={20} aria-hidden="true" />
+          <T k="import.private" as="span" />
+        </div>
+      </section>
+
+      <section className="import-workspace">
+        <div className="import-form paper-card">
+          <label htmlFor={titleId}>
+            <T k="import.titleLabel" />
+          </label>
+          <input
+            id={titleId}
+            value={title}
+            maxLength={LIMITS.importTitle}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={t("import.titlePlaceholder")}
+          />
+
+          <label htmlFor={textId}>
+            <T k="import.textLabel" />
+          </label>
+          <textarea
+            id={textId}
+            value={raw}
+            rows={10}
+            aria-describedby={counterId}
+            aria-invalid={tooLong}
+            onChange={(event) => setRaw(event.target.value)}
+            placeholder={t("import.textPlaceholder")}
+          />
+          <p id={counterId} className={"char-counter" + (tooLong ? " over" : "")}>
+            {t("import.counter", { used: raw.length, max: LIMITS.importText })}
+          </p>
+          {tooLong && <ErrorNote messageKey="import.tooLong" />}
+
+          <div className="import-form-bottom">
+            <span className="soft-label">
+              {t("import.stats", { words: stats.words, sentences: stats.sentences })}
+            </span>
+            <AsyncButton
+              busy={save.busy}
+              busyLabelKey="import.saving"
+              disabled={!raw.trim() || tooLong}
+              onClick={() => void save.run()}
+            >
+              <Upload size={17} aria-hidden="true" />
+              <T k="import.save" />
+            </AsyncButton>
+          </div>
+          {save.status === "done" && (
+            <p className="save-confirm" role="status">
+              <Check size={16} aria-hidden="true" />
+              <T k="import.saved" />
+            </p>
+          )}
+          {save.errorKey && <ErrorNote messageKey={save.errorKey} />}
+        </div>
+
+        <div className="import-preview paper-card">
+          <div className="preview-title">
+            <T as="h2" k="import.preview" />
+            <Pill tone="ochre">{estimate.score}/10</Pill>
+          </div>
+
+          {preview.length ? (
+            <div className="preview-sentences" lang="vi">
+              {preview.map(({ line, tokens }, lineIndex) => (
+                <p key={`${lineIndex}:${line.slice(0, 24)}`} className="preview-tokens">
+                  {tokens.map((token, position) => (
+                    <button
+                      key={`${lineIndex}:${position}`}
+                      type="button"
+                      onClick={() => void speak(token).catch(() => undefined)}
+                      aria-label={t("reader.listenWord", { word: token })}
+                    >
+                      {token}
+                    </button>
+                  ))}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <div className="preview-empty">
+              <PigMark />
+              <T as="p" k="import.previewEmpty" />
+            </div>
+          )}
+
+          <p className="approx-note">
+            <Info size={15} aria-hidden="true" />
+            <T k="import.approxNote" />
+          </p>
+          <p className="approx-note">
+            <Volume2 size={15} aria-hidden="true" />
+            <T k="import.audioNote" />
+          </p>
+        </div>
+      </section>
+
+      {imports.length > 0 && (
+        <section className="saved-imports">
+          <T as="h2" k="import.savedList" />
+          {imports.map((item) => (
+            <article key={item.id} className="paper-card">
+              <div>
+                <strong lang="vi">{item.title}</strong>
+                <p lang="vi">
+                  {item.raw.slice(0, 100)}
+                  {item.raw.length > 100 ? "…" : ""}
+                </p>
+              </div>
+              <div className="saved-actions">
+                <Pill>{item.difficulty}/10</Pill>
+                <button type="button" className="text-button" onClick={() => onOpen(storyFromImport(item))}>
+                  <T k="import.open" />
+                </button>
+                {confirmDelete === item.id ? (
+                  // Inline confirmation rather than a window.confirm: it keeps the
+                  // title of what is about to go in front of the person deleting it.
+                  <span className="confirm-inline" role="group">
+                    <span>{t("import.deleteConfirm", { title: item.title })}</span>
+                    <AsyncButton
+                      className="text-button danger"
+                      busy={remove.busy}
+                      busyLabelKey="import.deleting"
+                      onClick={() => void remove.run(item.id)}
+                    >
+                      <T k="import.deleteYes" />
+                    </AsyncButton>
+                    <button type="button" className="text-button" onClick={() => setConfirmDelete(null)}>
+                      <T k="import.deleteNo" />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      remove.reset();
+                      setConfirmDelete(item.id);
+                    }}
+                  >
+                    <T k="import.delete" />
+                  </button>
+                )}
+              </div>
+              {confirmDelete === item.id && remove.errorKey && <ErrorNote messageKey={remove.errorKey} />}
+            </article>
+          ))}
+        </section>
+      )}
+    </main>
+  );
 }

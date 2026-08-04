@@ -9,5 +9,6 @@
   "orientation": "portrait-primary",
   "background_color": "#f3ecdf",
   "theme_color": "#a54135",
-  "categories": ["education", "books"]
+  "categories": ["education", "books"],
+  "version": "0.6.0"
 }

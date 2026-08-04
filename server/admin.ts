@@ -27,11 +27,20 @@ switch (command) {
   case "add": {
     const [username, password] = args;
     const checkedName = validateUsername(username);
-    if (!checkedName.valid) { console.error(checkedName.error); process.exit(1); }
+    if (!checkedName.valid) {
+      console.error(checkedName.error);
+      process.exit(1);
+    }
     const checkedPassword = validatePassword(password);
-    if (!checkedPassword.valid) { console.error(checkedPassword.error); process.exit(1); }
+    if (!checkedPassword.valid) {
+      console.error(checkedPassword.error);
+      process.exit(1);
+    }
     const usernameNorm = normalizeUsername(checkedName.username);
-    if (db.getUserAuth(usernameNorm)) { console.error("That username already exists."); process.exit(1); }
+    if (db.getUserAuth(usernameNorm)) {
+      console.error("That username already exists.");
+      process.exit(1);
+    }
     const { hash, salt } = await hashPassword(checkedPassword.password);
     const user = db.createUser({
       username: checkedName.username,
@@ -46,9 +55,15 @@ switch (command) {
   case "passwd": {
     const [username, password] = args;
     const record = db.getUserAuth(normalizeUsername(username));
-    if (!record) { console.error("No such user."); process.exit(1); }
+    if (!record) {
+      console.error("No such user.");
+      process.exit(1);
+    }
     const checkedPassword = validatePassword(password);
-    if (!checkedPassword.valid) { console.error(checkedPassword.error); process.exit(1); }
+    if (!checkedPassword.valid) {
+      console.error(checkedPassword.error);
+      process.exit(1);
+    }
     const { hash, salt } = await hashPassword(checkedPassword.password);
     db.setPassword(record.user.id, hash, salt);
     console.log(`Updated password for ${record.user.username}.`);
