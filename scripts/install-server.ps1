@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
   [string]$AppDir = "C:\ProgramData\TimConHeo\app",
   [string]$WebConfig = "C:\inetpub\wwwroot\web.config",
@@ -51,7 +51,7 @@ foreach ($folder in @("app", "server", "shared", "scripts", "public")) {
   & robocopy (Join-Path $projectRoot $folder) (Join-Path $AppDir $folder) /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS | Out-Null
   if ($LASTEXITCODE -gt 7) { throw "robocopy failed for $folder (exit $LASTEXITCODE)" }
 }
-foreach ($file in @("package.json", "package-lock.json", "index.html", "vite.config.ts", "tsconfig.json", "tsconfig.client.json", "tsconfig.server.json")) {
+foreach ($file in @("package.json", "package-lock.json", "index.html", "vite.config.ts", "tsconfig.json", "tsconfig.client.json", "tsconfig.server.json", "tsconfig.tests.json")) {
   Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination (Join-Path $AppDir $file) -Force
 }
 
