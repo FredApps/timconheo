@@ -11,8 +11,8 @@ const renderedLines = (storyId: string): string[] => {
 const clean = (value: string) => value.trim().replace(/[.,!?;:…]+$/u, "");
 
 test("the corpus is the size the documentation claims", () => {
-  expect(STORIES).toHaveLength(12);
-  expect(STORIES.reduce((n, story) => n + story.sentences.length, 0)).toBe(46);
+  expect(STORIES).toHaveLength(50);
+  expect(STORIES.reduce((n, story) => n + story.sentences.length, 0)).toBe(160);
 });
 
 test("displayed Vietnamese reconstructs every word of the recorded line", () => {
@@ -30,7 +30,6 @@ describe("source-line locks", () => {
   // Character-for-character. These are what stops an edit from quietly turning a
   // sourced reading into a variant nobody checked.
   const cases: Array<[string, string[]]> = [
-    ["dong-dao-con-co-be-be", ["Con cò bé bé", "Nó đậu cành tre", "Đi không hỏi mẹ", "Biết đi đường nào"]],
     [
       "dong-dao-con-meo",
       [
@@ -146,10 +145,9 @@ test("dictionary keys are already normalised, so every lookup can hit", () => {
   }
 });
 
-test("rights metadata does not call the attributed song folklore", () => {
-  const song = STORIES.find((story) => story.id === "dong-dao-con-co-be-be");
-  expect(song?.license).toBe("copyrightedExcerpt");
-  expect(song?.source).toMatch(/Lê Xuân Thọ/);
+test("the shipped corpus is original or public domain", () => {
+  expect(STORIES).toHaveLength(50);
+  expect(STORIES.some((story) => story.license === "copyrightedExcerpt")).toBe(false);
   for (const story of STORIES.filter((item) => item.license === "publicDomain")) {
     expect(story.sourceUrl, `${story.id} needs a verification URL`).toBeTruthy();
   }

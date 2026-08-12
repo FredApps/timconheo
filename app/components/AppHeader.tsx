@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import type { User } from "../../shared/types";
 import type { AppView, ThemeMode } from "../types";
-import { T, useLang } from "../i18n";
+import { BiText, T, useLang } from "../i18n";
+import { V07_TEXT } from "../i18n/content";
 import { usePopover } from "../lib/focus";
 import { useSpeech } from "../lib/speech";
 import { NAV_ITEMS } from "./nav-items";
@@ -39,7 +40,7 @@ export function AppHeader({
   theme: ThemeMode;
   onTheme: () => void;
   user: User;
-  onSignOut: () => void;
+  onSignOut: (purge?: boolean) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -94,7 +95,7 @@ export function AppHeader({
         <button
           type="button"
           className="icon-button"
-          onClick={onSignOut}
+          onClick={() => onSignOut(true)}
           aria-label={t("nav.signOutOf", { username: user.username })}
         >
           <LogOut size={18} aria-hidden="true" />
@@ -148,6 +149,14 @@ export function AppHeader({
             <button type="button" role="menuitem" onClick={() => go("about")}>
               <Info size={17} aria-hidden="true" />
               <T k="nav.about" />
+            </button>
+            <button type="button" role="menuitem" onClick={() => onSignOut(false)}>
+              <LogOut size={17} aria-hidden="true" />
+              <BiText value={V07_TEXT.signOutKeep} />
+            </button>
+            <button type="button" role="menuitem" onClick={() => onSignOut(true)}>
+              <LogOut size={17} aria-hidden="true" />
+              <BiText value={V07_TEXT.signOutClear} />
             </button>
           </div>
         )}

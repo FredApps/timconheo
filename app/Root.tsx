@@ -44,12 +44,15 @@ function RootContent() {
     void check();
   }, [check]);
 
-  const signOut = useCallback(() => {
-    void api
-      .logout()
-      .catch(() => undefined)
-      .finally(() => void check());
-  }, [check]);
+  const signOut = useCallback(
+    (purge = true) => {
+      void api
+        .logout(purge)
+        .catch(() => undefined)
+        .finally(() => void check());
+    },
+    [check],
+  );
 
   if (phase.status === "loading") return <Loading />;
   if (phase.status === "offline") return <ConnectionScreen onRetry={() => void check()} busy={false} />;

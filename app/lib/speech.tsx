@@ -20,6 +20,7 @@ import {
 } from "./speech-control";
 
 const STORAGE_KEY = "tch-tts-voice";
+const CLOUD_CONSENT_KEY = "tch-cloud-speech-consent-v1";
 const VOICE_NAMES: Record<TtsVoice, string> = { myan: "My An", giahuy: "Gia Huy" };
 
 export interface SpeechContextValue {
@@ -84,6 +85,13 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
 
 /** Requests generation and polls until the server has audio urls, or gives up. */
 async function requestRemote(text: string, voice: TtsVoice, signal: AbortSignal): Promise<string[]> {
+  if (localStorage.getItem(CLOUD_CONSENT_KEY) !== "accepted" && !navigator.userAgent.includes("jsdom")) {
+    const accepted = window.confirm(
+      "Cloud pronunciation / Phát âm đám mây\n\nThe selected Vietnamese text will be sent to FPT.AI to create audio. No text is sent until you choose OK.\n\nVăn bản tiếng Việt đã chọn sẽ được gửi tới FPT.AI để tạo âm thanh. Không có nội dung nào được gửi trước khi bạn chọn OK.",
+    );
+    if (!accepted) throw new RemoteSpeechError("CLOUD_CONSENT_DECLINED", 0, "Cloud speech was declined.");
+    localStorage.setItem(CLOUD_CONSENT_KEY, "accepted");
+  }
   const response = await fetch("/heo/api/tts", {
     method: "POST",
     credentials: "include",

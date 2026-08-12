@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import type { Story } from "../types";
 import { LIMITS } from "../../shared/validation";
 import { T, useT } from "../i18n";
+import { BiText } from "../i18n";
+import { V07_TEXT } from "../i18n/content";
 import { useAsyncAction } from "../lib/async";
 import { estimateStory } from "../lib/difficulty";
 import { importStats, segmentImport, splitSentences, storyFromImport } from "../lib/imports";
@@ -30,7 +32,10 @@ export default function ImportView({
 
   const [title, setTitle] = useState("");
   const [raw, setRaw] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | string | null>(null);
+  const [privacyAccepted, setPrivacyAccepted] = useState(
+    () => localStorage.getItem("tch-import-privacy-v1") === "accepted",
+  );
 
   const stats = useMemo(() => importStats(raw), [raw]);
   const preview = useMemo(
@@ -56,7 +61,7 @@ export default function ImportView({
     setTitle("");
   });
 
-  const remove = useAsyncAction(async (id: number) => {
+  const remove = useAsyncAction(async (id: number | string) => {
     await api.deleteImport(id);
     await onSaved();
     setConfirmDelete(null);
@@ -106,6 +111,26 @@ export default function ImportView({
           </p>
           {tooLong && <ErrorNote messageKey="import.tooLong" />}
 
+          <label className="privacy-consent">
+            <input
+              type="checkbox"
+              checked={privacyAccepted}
+              onChange={(event) => {
+                setPrivacyAccepted(event.target.checked);
+                if (event.target.checked) localStorage.setItem("tch-import-privacy-v1", "accepted");
+                else localStorage.removeItem("tch-import-privacy-v1");
+              }}
+            />
+            <span>
+              <strong>
+                <BiText value={V07_TEXT.privacyUnderstand} />
+              </strong>
+              <small>
+                <BiText value={V07_TEXT.privacyImportBody} />
+              </small>
+            </span>
+          </label>
+
           <div className="import-form-bottom">
             <span className="soft-label">
               {t("import.stats", { words: stats.words, sentences: stats.sentences })}
@@ -113,7 +138,7 @@ export default function ImportView({
             <AsyncButton
               busy={save.busy}
               busyLabelKey="import.saving"
-              disabled={!raw.trim() || tooLong}
+              disabled={!raw.trim() || tooLong || !privacyAccepted}
               onClick={() => void save.run()}
             >
               <Upload size={17} aria-hidden="true" />

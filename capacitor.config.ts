@@ -1,17 +1,14 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-// Words, cards and reading progress live on the server behind the login, so the
-// app points the WebView at the live site rather than bundling a copy it could
-// never keep in sync. Loading from https://ayrien.se means the origin -- and so
-// the httpOnly session cookie -- is the same one the browser uses.
+// v0.7 bundles the UI and learning corpus so Android can cold-start in airplane
+// mode. API traffic uses CapacitorHttp and the offline outbox in app/lib/api.ts.
 const config: CapacitorConfig = {
   appId: "se.ayrien.timconheo",
   appName: "Tìm Con Heo",
   webDir: "dist/client",
   server: {
     androidScheme: "https",
-    hostname: "ayrien.se",
-    url: "https://ayrien.se/heo/",
+    hostname: "localhost",
     cleartext: false,
   },
   android: {
@@ -19,6 +16,8 @@ const config: CapacitorConfig = {
     backgroundColor: "#f3ecdf",
   },
   plugins: {
+    CapacitorCookies: { enabled: true },
+    CapacitorHttp: { enabled: true },
     TextToSpeech: {
       rate: 0.82,
       pitch: 1,

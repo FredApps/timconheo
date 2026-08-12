@@ -279,6 +279,21 @@ export default function ReaderView({
           ))}
         </div>
 
+        {(story.grammarNotes?.length || story.culturalNotes?.length) && (
+          <aside className="reader-learning-notes">
+            {[...(story.grammarNotes ?? []), ...(story.culturalNotes ?? [])].map((note, index) => (
+              <details key={`${note.title.en}:${index}`}>
+                <summary>
+                  <BiText value={note.title} />
+                </summary>
+                <p>
+                  <BiText value={note.body} />
+                </p>
+              </details>
+            ))}
+          </aside>
+        )}
+
         <footer className="reader-footer">
           <div className="end-mark" aria-hidden="true">
             <span />

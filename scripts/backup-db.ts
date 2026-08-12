@@ -5,12 +5,22 @@
 //
 //   npm run backup            create, verify, prune
 //   npm run backup -- --list  show what is retained
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { createCipheriv, randomBytes } from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { paths } from "../server/config.js";
 
-const RETAIN = 14;
+const RETAIN = 30;
 const PREFIX = "timconheo-";
 const SUFFIX = ".sqlite3";
 
@@ -43,7 +53,7 @@ function stamp(now = new Date()): string {
 export function listBackups(dir: string = paths.backups): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.startsWith(PREFIX) && name.endsWith(SUFFIX))
+    .filter((name) => name.startsWith(PREFIX) && (name.endsWith(SUFFIX) || name.endsWith(`${SUFFIX}.enc`)))
     .sort()
     .reverse();
 }
@@ -56,7 +66,7 @@ export function backupDatabase(
   if (!existsSync(source)) throw new Error(`No database at ${source}`);
   mkdirSync(dir, { recursive: true });
 
-  const target = path.join(dir, `${PREFIX}${stamp()}${SUFFIX}`);
+  let target = path.join(dir, `${PREFIX}${stamp()}${SUFFIX}`);
   if (existsSync(target)) throw new Error(`Backup already exists: ${target}`);
 
   const live = new DatabaseSync(source, { readOnly: true });
@@ -92,6 +102,19 @@ export function backupDatabase(
     throw error;
   }
   restored.close();
+
+  const keyFile = process.env.HEO_BACKUP_KEY_FILE;
+  if (keyFile && existsSync(keyFile)) {
+    const key = Buffer.from(readFileSync(keyFile, "utf8").trim(), "base64");
+    if (key.length !== 32) throw new Error("Backup encryption key must contain 32 base64-encoded bytes.");
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const ciphertext = Buffer.concat([cipher.update(readFileSync(target)), cipher.final()]);
+    const encrypted = `${target}.enc`;
+    writeFileSync(encrypted, Buffer.concat([Buffer.from("TCH1"), iv, cipher.getAuthTag(), ciphertext]));
+    unlinkSync(target);
+    target = encrypted;
+  }
 
   const pruned: string[] = [];
   for (const name of listBackups(dir).slice(retain)) {

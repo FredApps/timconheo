@@ -24,6 +24,154 @@
   --tone-grid: #ded3c4;
 }
 
+/* v0.7: quiet, always-visible resilience without turning the reader into a dashboard. */
+.sync-status,
+.update-prompt {
+  position: fixed;
+  z-index: 80;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(5.25rem + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--paper) 94%, #ffd6c9);
+  box-shadow: 0 0.8rem 2.2rem rgb(71 38 24 / 18%);
+  backdrop-filter: blur(14px);
+}
+
+.update-prompt {
+  bottom: calc(10.4rem + env(safe-area-inset-bottom));
+}
+.sync-status strong,
+.sync-status small,
+.update-prompt strong,
+.update-prompt small {
+  display: block;
+}
+.sync-status small,
+.update-prompt small {
+  margin-top: 0.12rem;
+  opacity: 0.72;
+}
+.sync-pig {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 0.15rem 0.15rem rgb(77 35 24 / 20%));
+}
+.sync-status button,
+.update-prompt button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--accent, #b84f45);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sync-pig {
+    animation: sync-pig-breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes sync-pig-breathe {
+    50% {
+      transform: translateY(-2px) rotate(-2deg);
+    }
+  }
+}
+
+@media (max-width: 520px) {
+  .sync-status,
+  .update-prompt {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
+}
+
+.privacy-consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  margin: 0.9rem 0;
+  padding: 0.8rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--paper) 80%, #f7d9b6);
+}
+.privacy-consent input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.15rem;
+}
+.privacy-consent strong,
+.privacy-consent small {
+  display: block;
+}
+.privacy-consent small {
+  margin-top: 0.25rem;
+  line-height: 1.45;
+  opacity: 0.78;
+}
+.privacy-center {
+  margin-top: 1.5rem;
+  padding: clamp(1rem, 3vw, 1.6rem);
+}
+.privacy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+.privacy-actions button,
+.device-sessions button,
+.delete-account button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+.device-sessions > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.delete-account {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.delete-account input {
+  max-width: 28rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.delete-account .danger {
+  width: max-content;
+  color: #fff;
+  background: #9e342e;
+}
+
 :root[data-theme="dark"] {
   --paper-bg: #171d1a;
   --paper: #202722;

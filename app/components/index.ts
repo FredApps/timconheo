@@ -6,4 +6,6 @@ export { PigMark } from "./PigMark";
 export { Pill } from "./Pill";
 export { StoryMotif } from "./StoryMotif";
 export { Toast } from "./Toast";
+export { SyncStatus } from "./SyncStatus";
+export { UpdatePrompt } from "./UpdatePrompt";
 export { AsyncButton, ConnectionScreen, ErrorNote, Spinner } from "./feedback";

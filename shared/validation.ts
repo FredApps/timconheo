@@ -18,7 +18,21 @@ export const LIMITS = {
   score: { min: 0, max: 1 },
   difficulty: { min: 0, max: 10 },
   rowId: { min: 1, max: Number.MAX_SAFE_INTEGER },
+  syncBatch: 200,
 } as const;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function validateUuid(value: unknown, field: string): string {
+  const text = requiredText(value, field, 64, "INVALID_SYNC");
+  if (!UUID.test(text)) reject("INVALID_SYNC", `${field} must be a UUID.`, field);
+  return text;
+}
+
+export function validateOccurredAt(value: unknown): number {
+  const now = Date.now();
+  return validateNumber(value, "occurredAt", now - 365 * 86400000, now + 5 * 60000, "INVALID_SYNC");
+}
 
 export const TONE_KEYS = ["ngang", "huyen", "sac", "hoi-nga", "nang"] as const;
 export type ToneKeyValue = (typeof TONE_KEYS)[number];

@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { NextFunction, Request, Response } from "express";
-import { RateLimiter, hashPassword, securityHeaders, verifyPassword } from "../../server/auth.js";
+import {
+  AuthService,
+  RateLimiter,
+  hashPassword,
+  hashSessionToken,
+  securityHeaders,
+  verifyPassword,
+} from "../../server/auth.js";
+import type { HeoDatabase } from "../../server/database.js";
+import type { User } from "../../shared/types.js";
 
 function fakeResponse(): Response & { headers: Record<string, string>; statusCode: number; body: unknown } {
   const headers: Record<string, string> = {};
@@ -89,4 +98,41 @@ test("password hashing round-trips and rejects a wrong password", async () => {
   // Different salts must produce different hashes for the same input.
   const second = await hashPassword("a-real-password");
   assert.notEqual(second.hash, hash);
+});
+
+test("a revocable bearer session authenticates Android requests without cookies", () => {
+  const user: User = {
+    id: "user-1",
+    username: "learner",
+    isAdmin: false,
+    disabled: false,
+    createdAt: new Date().toISOString(),
+  };
+  let storedHash = "";
+  const db = {
+    createSession(_userId: string, tokenHash: string) {
+      storedHash = tokenHash;
+    },
+    getSession(tokenHash: string) {
+      return tokenHash === storedHash ? { id: "session-1", user, lastSeen: Date.now() } : null;
+    },
+    touchSession() {},
+  } as unknown as HeoDatabase;
+  const auth = new AuthService(db);
+  const token = auth.issueBearerSession(user);
+  assert.equal(storedHash, hashSessionToken(token));
+
+  const req = {
+    headers: {},
+    get(name: string) {
+      return name.toLowerCase() === "authorization" ? `Bearer ${token}` : undefined;
+    },
+  } as unknown as Request;
+  let nextCalled = false;
+  auth.middleware(req, fakeResponse(), () => {
+    nextCalled = true;
+  });
+  assert.equal(nextCalled, true);
+  assert.equal(req.user?.id, user.id);
+  assert.equal(req.sessionId, "session-1");
 });

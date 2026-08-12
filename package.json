@@ -1,6 +1,6 @@
 {
   "name": "tim-con-heo",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "A calm Vietnamese reading app for beginners.",
@@ -20,6 +20,7 @@
     "start": "node dist/server/server.js",
     "admin": "tsx server/admin.ts",
     "backup": "tsx scripts/backup-db.ts",
+    "restore": "tsx scripts/restore-backup.ts",
     "precache": "tsx scripts/precache-tts.ts",
     "typecheck": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "format": "prettier --write .",
@@ -27,6 +28,9 @@
     "test": "npm run test:server && npm run test:client",
     "test:server": "node --import tsx --test \"tests/server/*.test.ts\"",
     "test:client": "vitest run",
+    "test:e2e": "playwright test",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "release:check": "npm run format:check && npm run typecheck && npm test && npm run test:e2e && npm run lint && npm run build && npm run audit:prod",
     "lint": "eslint .",
     "audit:prod": "npm audit --omit=dev",
     "build:android": "vite build && cap sync android"
@@ -48,6 +52,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.5.0",
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

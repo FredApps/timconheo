@@ -39,7 +39,12 @@ export default defineConfig([
         projectService: {
           // Build configuration is not in any of those projects, so it gets an
           // inferred one rather than a parse error.
-          allowDefaultProject: ["vite.config.ts", "vitest.config.ts", "capacitor.config.ts"],
+          allowDefaultProject: [
+            "vite.config.ts",
+            "vitest.config.ts",
+            "capacitor.config.ts",
+            "playwright.config.ts",
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },

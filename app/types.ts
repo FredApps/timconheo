@@ -76,6 +76,8 @@ export interface Story {
    * transcriptions of recorded regional speech.
    */
   attributionNote?: Bi;
+  grammarNotes?: Array<{ title: Bi; body: Bi }>;
+  culturalNotes?: Array<{ title: Bi; body: Bi }>;
 }
 
 export type AppView =

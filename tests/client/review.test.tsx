@@ -65,7 +65,7 @@ test("context comes from the shipped corpus", async () => {
 
   await userEvent.click(await screen.findByRole("button", { name: /start gently/i }));
   await userEvent.click(screen.getByRole("button", { name: /show meaning/i }));
-  expect(screen.getByText("Đi không hỏi mẹ")).toBeInTheDocument();
+  expect(screen.getByText("Ba ăn cơm")).toBeInTheDocument();
 });
 
 test("context for a card saved from an imported text is resolved client-side", async () => {

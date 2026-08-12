@@ -1,13 +1,20 @@
-// Versioned cache name: bumping it evicts everything the previous build cached,
-// including the pre-server static shell.
-const CACHE = "tim-con-heo-shell-v0.6.0";
+const CACHE = "tim-con-heo-shell-v0.7.0";
 const SCOPE_PATH = new URL(self.registration.scope).pathname;
-const SHELL = [SCOPE_PATH, `${SCOPE_PATH}manifest.webmanifest`];
+const CORE = [SCOPE_PATH, `${SCOPE_PATH}manifest.webmanifest`, `${SCOPE_PATH}version.json`];
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
-  self.skipWaiting();
-});
+async function precacheBuild() {
+  const cache = await caches.open(CACHE);
+  await cache.addAll(CORE);
+  const response = await fetch(SCOPE_PATH, { cache: "no-store" });
+  const html = await response.text();
+  const urls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+    .map((match) => new URL(match[1], self.registration.scope))
+    .filter((url) => url.origin === self.location.origin)
+    .map((url) => url.href);
+  await Promise.allSettled(urls.map((url) => cache.add(url)));
+}
+
+self.addEventListener("install", (event) => event.waitUntil(precacheBuild()));
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
@@ -18,29 +25,35 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith(`${SCOPE_PATH}api/`)) return;
 
-  // Never cache the API. Those responses are per-account and session-scoped, so
-  // a stale one would show the previous user's words, or keep a signed-in
-  // session alive after logout. Always go to the network.
-  if (url.pathname.startsWith(`${SCOPE_PATH}api/`)) return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fresh = fetch(event.request)
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          }
+          if (response.ok) caches.open(CACHE).then((cache) => cache.put(SCOPE_PATH, response.clone()));
           return response;
         })
-        .catch(() => cached || (event.request.mode === "navigate" ? caches.match(SCOPE_PATH) : undefined));
-      return cached || fresh;
-    }),
+        .catch(() => caches.match(SCOPE_PATH)),
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then(
+      (cached) =>
+        cached ??
+        fetch(event.request).then((response) => {
+          if (response.ok) caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
+          return response;
+        }),
+    ),
   );
 });

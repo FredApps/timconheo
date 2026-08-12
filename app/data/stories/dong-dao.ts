@@ -7,48 +7,44 @@ import { bi, line } from "../helpers";
  * each entry records the page the wording was checked against and the glosses
  * are written here rather than lifted.
  *
- * The one exception is "Mẹ yêu không nào", which is a twentieth-century song
- * with a named composer. It is kept as a short attributed excerpt and labelled
- * `copyrightedExcerpt` -- calling it folklore would be the actual wrong.
+ * Original beginner material is kept explicitly separate from sourced rhymes.
  */
 export const DONG_DAO_STORIES: Story[] = [
   {
     id: "dong-dao-con-co-be-be",
-    title: "Mẹ yêu không nào",
-    titleEn: "Does Mother Love Me?",
+    title: "Mẹ và ba",
+    titleEn: "Mother and Father",
     tier: 1,
-    kind: "dongDao",
+    kind: "firstWords",
     region: "national",
     description: bi(
-      "The opening stanza of a well-known children's song, attributed rather than presented as folklore.",
-      "Khổ mở đầu của một bài hát thiếu nhi quen thuộc, được ghi rõ tác giả thay vì xem là dân gian.",
+      "A tiny original reading about two people and a meal.",
+      "Một bài đọc nguyên bản rất ngắn về hai người và một bữa cơm.",
     ),
-    source: "Mẹ yêu không nào — Lê Xuân Thọ (opening excerpt)",
-    sourceUrl: "https://truongca.com/images/sheet/pdf/me/me-yeu-khong-nao-le-xuan-tho-truongca.com.pdf",
-    license: "copyrightedExcerpt",
-    pattern: "stork",
+    source: "Original Tìm Con Heo learning material",
+    license: "original",
+    pattern: "sprout",
     sentences: [
-      line("co-1", bi("The little stork.", "Con cò bé bé."), [
-        ["Con", "con"],
-        ["cò", "cò"],
-        ["bé", "bé"],
-        ["bé", "bé"],
+      line("co-1", bi("Mother and father.", "Mẹ và ba."), [
+        ["Mẹ", "mẹ"],
+        ["và", "và"],
+        ["ba", "ba"],
       ]),
-      line("co-2", bi("It perches on a bamboo branch.", "Nó đậu cành tre."), [
-        ["Nó", "nó"],
-        ["đậu", "đậu"],
-        ["cành tre", "cành tre"],
+      line("co-2", bi("Mother eats rice.", "Mẹ ăn cơm."), [
+        ["Mẹ", "mẹ"],
+        ["ăn", "ăn"],
+        ["cơm", "cơm"],
       ]),
-      line("co-3", bi("It leaves without asking its mother.", "Đi không hỏi mẹ."), [
-        ["Đi", "đi"],
-        ["không", "không"],
-        ["hỏi", "hỏi"],
-        ["mẹ", "mẹ"],
+      line("co-3", bi("Father eats rice.", "Ba ăn cơm."), [
+        ["Ba", "ba"],
+        ["ăn", "ăn"],
+        ["cơm", "cơm"],
       ]),
-      line("co-4", bi("How would it know the way?", "Biết đi đường nào."), [
-        ["Biết", "biết"],
+      line("co-4", bi("Mother and father go.", "Mẹ và ba đi."), [
+        ["Mẹ", "mẹ"],
+        ["và", "và"],
+        ["ba", "ba"],
         ["đi", "đi"],
-        ["đường nào", "đường nào"],
       ]),
     ],
   },

@@ -32,12 +32,10 @@ beforeEach(() => {
   );
 });
 
-test("a line that repeats a word renders both occurrences", async () => {
+test("a reading that repeats a word renders every occurrence", async () => {
   setup();
-  // "Con cò bé bé" -- the second "bé" used to collapse into the first because
-  // the React key was the word rather than its position.
-  const tokens = await screen.findAllByRole("button", { name: /^bé/ });
-  expect(tokens).toHaveLength(2);
+  const tokens = await screen.findAllByRole("button", { name: /^mẹ/i });
+  expect(tokens).toHaveLength(3);
 });
 
 test("every token in the reading is rendered", () => {
@@ -82,12 +80,12 @@ describe("finishing a reading", () => {
 describe("the word panel", () => {
   test("opens as a labelled modal dialog and traps Escape", async () => {
     setup();
-    const token = screen.getAllByRole("button", { name: /^cò/ })[0];
+    const token = screen.getAllByRole("button", { name: /^mẹ/i })[0];
     await userEvent.click(token);
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAccessibleName(/cò/);
+    expect(dialog).toHaveAccessibleName(/mẹ/i);
 
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -95,7 +93,7 @@ describe("the word panel", () => {
 
   test("returns focus to the word that opened it", async () => {
     setup();
-    const token = screen.getAllByRole("button", { name: /^cò/ })[0];
+    const token = screen.getAllByRole("button", { name: /^mẹ/i })[0];
     await userEvent.click(token);
     await screen.findByRole("dialog");
     await userEvent.keyboard("{Escape}");
@@ -106,12 +104,12 @@ describe("the word panel", () => {
     const onRemember = vi.fn().mockResolvedValue(undefined);
     setup({ onRemember });
 
-    await userEvent.click(screen.getAllByRole("button", { name: /^cò/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: /^mẹ/i })[0]);
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: /save for review/i }));
 
     await waitFor(() => expect(onRemember).toHaveBeenCalledTimes(1));
-    expect(onRemember.mock.calls[0][0].entry).toBe("cò");
+    expect(onRemember.mock.calls[0][0].entry).toBe("mẹ");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -119,7 +117,7 @@ describe("the word panel", () => {
     const onRemember = vi.fn().mockRejectedValue(new Error("nope"));
     setup({ onRemember });
 
-    await userEvent.click(screen.getAllByRole("button", { name: /^cò/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: /^mẹ/i })[0]);
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: /save for review/i }));
 
@@ -141,8 +139,8 @@ test("the scaffolding control reports which mode is active", async () => {
 
 test("the source line and its licence are shown", () => {
   setup();
-  expect(screen.getByText(/Lê Xuân Thọ/)).toBeInTheDocument();
-  expect(screen.getByText(/rights reserved/i)).toBeInTheDocument();
+  expect(screen.getByText(/Original Tìm Con Heo learning material/)).toBeInTheDocument();
+  expect(screen.getByText(/original app text/i)).toBeInTheDocument();
 });
 
 test("an original Central-set reading says it is not a dialect transcription", () => {

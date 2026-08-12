@@ -7,6 +7,7 @@ export interface User {
   createdAt: string;
 }
 export type FsrsCard = Record<string, unknown>;
+export type CardKind = "word" | "cloze" | "listening" | "grammar";
 export interface CardRecord {
   id: string;
   entry: string;
@@ -15,6 +16,8 @@ export interface CardRecord {
   card: FsrsCard;
   due: number;
   updatedAt: number;
+  kind?: CardKind;
+  payload?: Record<string, unknown>;
 }
 export interface ProgressRecord {
   storyId: string;
@@ -23,14 +26,16 @@ export interface ProgressRecord {
   updatedAt: number;
 }
 export interface ImportRecord {
-  id: number;
+  id: number | string;
+  entityId?: string;
   title: string;
   raw: string;
   importedAt: number;
   difficulty: number;
 }
 export interface ToneAttempt {
-  id: number;
+  id: number | string;
+  entityId?: string;
   tone: string;
   syllable: string;
   score: number;
@@ -41,6 +46,72 @@ export interface UserState {
   progress: ProgressRecord[];
   imports: ImportRecord[];
   tones: ToneAttempt[];
+  cards?: CardRecord[];
+  syncCursor?: number;
+}
+
+export type SyncOperationKind =
+  | "word.remember"
+  | "word.status"
+  | "progress.merge"
+  | "import.add"
+  | "import.delete"
+  | "tone.add"
+  | "card.review";
+
+export interface SyncOperation {
+  operationId: string;
+  deviceId: string;
+  entityId: string;
+  kind: SyncOperationKind;
+  occurredAt: number;
+  payload: Record<string, unknown>;
+}
+
+export interface SyncRequest {
+  protocolVersion: 1;
+  cursor: number;
+  operations: SyncOperation[];
+}
+
+export interface SyncChange {
+  sequence: number;
+  operationId: string;
+  entityId: string;
+  kind: SyncOperationKind;
+  acceptedAt: number;
+  result: unknown;
+}
+
+export interface SyncRejection {
+  operationId: string;
+  code: string;
+  message: string;
+}
+
+export interface SyncResponse {
+  protocolVersion: 1;
+  acknowledged: string[];
+  rejected: SyncRejection[];
+  changes: SyncChange[];
+  cursor: number;
+  serverNow: number;
+}
+
+export interface DeviceSession {
+  id: string;
+  deviceName: string;
+  createdAt: number;
+  lastSeen: number;
+  current: boolean;
+}
+
+export interface SyncStatus {
+  online: boolean;
+  syncing: boolean;
+  pending: number;
+  lastSyncedAt: number | null;
+  error: string | null;
 }
 export interface WordRecord {
   entry: string;

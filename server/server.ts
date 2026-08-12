@@ -1,9 +1,10 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import compression from "compression";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createEmptyCard, fsrs, Rating, State, type Card } from "ts-fsrs";
-import type { CardRecord } from "../shared/types.js";
+import type { CardRecord, SyncOperation, SyncOperationKind, SyncResponse } from "../shared/types.js";
 import {
   LIMITS,
   ValidationError,
@@ -13,6 +14,7 @@ import {
   validateGloss,
   validateImport,
   validateMinutes,
+  validateOccurredAt,
   validateRowId,
   validateScore,
   validateSentenceId,
@@ -21,6 +23,7 @@ import {
   validateSyllable,
   validateToneKey,
   validateWordStatus,
+  validateUuid,
 } from "../shared/validation.js";
 import {
   AuthService,
@@ -109,6 +112,107 @@ function route(handler: (req: Request, res: Response) => void) {
   };
 }
 
+const SYNC_KINDS = new Set<SyncOperationKind>([
+  "word.remember",
+  "word.status",
+  "progress.merge",
+  "import.add",
+  "import.delete",
+  "tone.add",
+  "card.review",
+]);
+
+function applyReview(
+  userId: string,
+  id: string,
+  rating: number,
+  at = Date.now(),
+): {
+  card: CardRecord;
+  word: ReturnType<HeoDatabase["getWord"]>;
+} {
+  if (![Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].includes(rating)) {
+    throw new ValidationError("INVALID_RATING", "Unknown rating.", "rating");
+  }
+  const record = db.getCard(userId, id);
+  if (!record) throw Object.assign(new Error("No such card."), { status: 404, code: "NO_CARD" });
+  const scheduled = scheduler.next(record.card as unknown as Card, new Date(at), rating);
+  const updated: CardRecord = {
+    ...record,
+    card: scheduled.card as unknown as Record<string, unknown>,
+    due: new Date(scheduled.card.due).getTime(),
+    updatedAt: at,
+  };
+  db.putCard(userId, updated);
+  const previousWord = db.getWord(userId, record.entry);
+  const nextStatus =
+    previousWord?.status === "known" || scheduled.card.state === State.Review ? "known" : "learning";
+  db.setWordStatus(userId, record.entry, nextStatus);
+  return { card: updated, word: db.getWord(userId, record.entry) };
+}
+
+function applySyncedReview(
+  userId: string,
+  operationId: string,
+  id: string,
+  rating: number,
+  occurredAt: number,
+) {
+  const current = db.getCard(userId, id);
+  if (!current) throw Object.assign(new Error("No such card."), { status: 404, code: "NO_CARD" });
+  if (![Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].includes(rating)) {
+    throw new ValidationError("INVALID_RATING", "Unknown rating.", "rating");
+  }
+  db.ensureReviewBaseline(userId, current);
+  db.recordReviewEvent(userId, operationId, id, rating, occurredAt);
+  let rebuilt = db.getReviewBaseline(userId, id)!;
+  for (const event of db.listReviewEvents(userId, id)) {
+    const scheduled = scheduler.next(
+      rebuilt.card as unknown as Card,
+      new Date(event.occurredAt),
+      event.rating,
+    );
+    rebuilt = {
+      ...rebuilt,
+      card: scheduled.card as unknown as Record<string, unknown>,
+      due: new Date(scheduled.card.due).getTime(),
+      updatedAt: event.occurredAt,
+    };
+  }
+  db.putCard(userId, rebuilt);
+  const previousWord = db.getWord(userId, rebuilt.entry);
+  const cardState = Number((rebuilt.card as { state?: unknown }).state);
+  if (previousWord) {
+    db.setWordStatus(
+      userId,
+      rebuilt.entry,
+      previousWord.status === "known" || cardState === Number(State.Review) ? "known" : "learning",
+    );
+  }
+  return { card: rebuilt, word: db.getWord(userId, rebuilt.entry) };
+}
+
+function parseSyncOperation(value: unknown): SyncOperation {
+  if (!value || typeof value !== "object") {
+    throw new ValidationError("INVALID_SYNC", "Operation must be an object.");
+  }
+  const input = value as Record<string, unknown>;
+  const kind = (typeof input.kind === "string" ? input.kind : "") as SyncOperationKind;
+  if (!SYNC_KINDS.has(kind))
+    throw new ValidationError("INVALID_SYNC_KIND", "Unknown sync operation.", "kind");
+  if (!input.payload || typeof input.payload !== "object" || Array.isArray(input.payload)) {
+    throw new ValidationError("INVALID_SYNC", "Operation payload must be an object.", "payload");
+  }
+  return {
+    operationId: validateUuid(input.operationId, "operationId"),
+    deviceId: validateUuid(input.deviceId, "deviceId"),
+    entityId: validateUuid(input.entityId, "entityId"),
+    kind,
+    occurredAt: validateOccurredAt(input.occurredAt),
+    payload: input.payload as Record<string, unknown>,
+  };
+}
+
 // -- auth ---------------------------------------------------------------------
 
 router.get("/api/session", (req: Request, res: Response) => {
@@ -120,8 +224,12 @@ router.post(
   loginLimiter.middleware,
   asyncRoute(async (req, res) => {
     const user = await auth.authenticate(req.body?.username, req.body?.password);
-    auth.issueSession(user, res);
-    res.json({ user });
+    if (req.body?.nativeDevice === true) {
+      res.json({ user, deviceToken: auth.issueBearerSession(user) });
+    } else {
+      auth.issueSession(user, res);
+      res.json({ user });
+    }
   }),
 );
 
@@ -157,8 +265,12 @@ router.post(
       passwordSalt: salt,
       isAdmin: db.countUsers() === 0,
     });
-    auth.issueSession(user, res);
-    res.status(201).json({ user });
+    if (req.body?.nativeDevice === true) {
+      res.status(201).json({ user, deviceToken: auth.issueBearerSession(user) });
+    } else {
+      auth.issueSession(user, res);
+      res.status(201).json({ user });
+    }
   }),
 );
 
@@ -167,11 +279,184 @@ router.post("/api/logout", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+router.get("/api/sessions", auth.requireUser, (req: Request, res: Response) => {
+  res.json({ sessions: db.listSessions(req.user!.id, req.sessionId) });
+});
+
+router.delete(
+  "/api/sessions/:id",
+  auth.requireUser,
+  route((req, res) => {
+    db.deleteSession(req.user!.id, String(req.params.id));
+    res.json({ ok: true });
+  }),
+);
+
 // -- learning state -----------------------------------------------------------
 
 router.get("/api/state", auth.requireUser, (req: Request, res: Response) => {
   res.json(db.getState(req.user!.id));
 });
+
+router.post(
+  "/api/sync",
+  auth.requireUser,
+  route((req, res) => {
+    if (req.body?.protocolVersion !== 1) {
+      throw new ValidationError("SYNC_UPGRADE_REQUIRED", "This app version cannot sync.", "protocolVersion");
+    }
+    if (!Array.isArray(req.body?.operations) || req.body.operations.length > LIMITS.syncBatch) {
+      throw new ValidationError(
+        "INVALID_SYNC",
+        `A sync batch may contain at most ${LIMITS.syncBatch} operations.`,
+        "operations",
+      );
+    }
+    const cursor = Math.max(0, Math.floor(Number(req.body?.cursor) || 0));
+    const userId = req.user!.id;
+    const acknowledged: string[] = [];
+    const rejected: SyncResponse["rejected"] = [];
+
+    db.transaction(() => {
+      for (const raw of req.body.operations as unknown[]) {
+        let operationId = "unknown";
+        try {
+          const operation = parseSyncOperation(raw);
+          operationId = operation.operationId;
+          if (db.getSyncOperation(userId, operation.operationId)) {
+            acknowledged.push(operation.operationId);
+            continue;
+          }
+          const payload = operation.payload;
+          let result: unknown;
+          switch (operation.kind) {
+            case "word.remember": {
+              const entry = validateEntry(payload.entry);
+              const gloss = validateGloss(payload.gloss);
+              const sourceSentenceId = validateSentenceId(payload.sourceSentenceId);
+              const cardKind = ["word", "cloze", "listening", "grammar"].includes(String(payload.kind))
+                ? (String(payload.kind) as CardRecord["kind"])
+                : "word";
+              const cardPayload =
+                payload.cardPayload &&
+                typeof payload.cardPayload === "object" &&
+                !Array.isArray(payload.cardPayload)
+                  ? (payload.cardPayload as Record<string, unknown>)
+                  : {};
+              const current = db.getWord(userId, entry);
+              db.putWord(userId, {
+                entry,
+                gloss: gloss || current?.gloss || "",
+                status: current?.status === "known" ? "known" : "learning",
+                timesSeen: (current?.timesSeen ?? 0) + 1,
+                firstSeen: current?.firstSeen ?? operation.occurredAt,
+                updatedAt: operation.occurredAt,
+              });
+              const id =
+                cardKind === "word" ? `recognition:${entry}` : `${cardKind}:${entry}:${sourceSentenceId}`;
+              if (!db.getCard(userId, id)) {
+                const card = createEmptyCard(new Date(operation.occurredAt));
+                db.putCard(userId, {
+                  id,
+                  entry,
+                  gloss,
+                  sourceSentenceId,
+                  card: card as unknown as Record<string, unknown>,
+                  due: new Date(card.due).getTime(),
+                  updatedAt: operation.occurredAt,
+                  kind: cardKind,
+                  payload: cardPayload,
+                });
+              }
+              result = { word: db.getWord(userId, entry), card: db.getCard(userId, id) };
+              break;
+            }
+            case "word.status": {
+              const entry = validateEntry(payload.entry);
+              const status = validateWordStatus(payload.status);
+              const current = db.getWord(userId, entry);
+              db.putWord(userId, {
+                entry,
+                gloss: validateGloss(payload.gloss) || current?.gloss || "",
+                status,
+                timesSeen: current?.timesSeen ?? 1,
+                firstSeen: current?.firstSeen ?? operation.occurredAt,
+                updatedAt: operation.occurredAt,
+              });
+              result = { word: db.getWord(userId, entry) };
+              break;
+            }
+            case "progress.merge": {
+              const storyId = validateStoryId(payload.storyId);
+              const existing = db.listProgress(userId).find((item) => item.storyId === storyId);
+              const sentencesRead = [
+                ...new Set([
+                  ...(existing?.sentencesRead ?? []),
+                  ...validateSentenceIds(payload.sentencesRead),
+                ]),
+              ];
+              const requestedComplete = validateCompletedAt(payload.completedAt);
+              db.putProgress(userId, {
+                storyId,
+                sentencesRead,
+                completedAt:
+                  existing?.completedAt && requestedComplete
+                    ? Math.min(existing.completedAt, requestedComplete)
+                    : (existing?.completedAt ?? requestedComplete),
+                updatedAt: operation.occurredAt,
+              });
+              result = { progress: db.listProgress(userId) };
+              break;
+            }
+            case "import.add":
+              result = { import: db.addImport(userId, validateImport(payload), operation.entityId) };
+              break;
+            case "import.delete":
+              db.deleteImportEntity(userId, operation.entityId);
+              result = { deleted: operation.entityId };
+              break;
+            case "tone.add":
+              db.addTone(
+                userId,
+                {
+                  tone: validateToneKey(payload.tone),
+                  syllable: validateSyllable(payload.syllable),
+                  score: validateScore(payload.score),
+                },
+                operation.entityId,
+              );
+              result = { tones: db.listTones(userId) };
+              break;
+            case "card.review": {
+              const cardId = validateCardId(payload.id);
+              const rating = Number(payload.rating);
+              result = applySyncedReview(userId, operation.operationId, cardId, rating, operation.occurredAt);
+              break;
+            }
+          }
+          db.recordSyncOperation(userId, operation, result);
+          acknowledged.push(operation.operationId);
+        } catch (error) {
+          const candidate = error as { code?: string; message?: string };
+          rejected.push({
+            operationId,
+            code: candidate.code ?? "INVALID_OPERATION",
+            message: candidate.message ?? "The operation could not be applied.",
+          });
+        }
+      }
+    });
+    const changes = db.listSyncChanges(userId, cursor);
+    res.json({
+      protocolVersion: 1,
+      acknowledged,
+      rejected,
+      changes,
+      cursor: changes.at(-1)?.sequence ?? db.latestSyncCursor(userId),
+      serverNow: Date.now(),
+    } satisfies SyncResponse);
+  }),
+);
 
 /** Tapping a word in the reader: record it, and open a recognition card once. */
 router.post(
@@ -277,32 +562,7 @@ router.post(
     const userId = req.user!.id;
     const id = validateCardId(req.body?.id);
     const rating = Number(req.body?.rating);
-    if (![Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].includes(rating)) {
-      res.status(400).json({ error: { code: "INVALID_RATING", message: "Unknown rating." } });
-      return;
-    }
-    const record = db.getCard(userId, id);
-    if (!record) {
-      res.status(404).json({ error: { code: "NO_CARD", message: "No such card." } });
-      return;
-    }
-    const scheduled = scheduler.next(record.card as unknown as Card, new Date(), rating);
-    const updated: CardRecord = {
-      ...record,
-      card: scheduled.card as unknown as Record<string, unknown>,
-      due: new Date(scheduled.card.due).getTime(),
-      updatedAt: Date.now(),
-    };
-    db.putCard(userId, updated);
-    const previousWord = db.getWord(userId, record.entry);
-    // Promotion is monotonic. Reaching "known" is permanent: a lapse re-opens
-    // review scheduling but never uproots a garden plant. A user may still demote
-    // by hand from the word list -- an explicit claim is a different thing from a
-    // scheduler side effect.
-    const nextStatus =
-      previousWord?.status === "known" || scheduled.card.state === State.Review ? "known" : "learning";
-    db.setWordStatus(userId, record.entry, nextStatus);
-    res.json({ card: updated, word: db.getWord(userId, record.entry) });
+    res.json(applyReview(userId, id, rating));
   }),
 );
 
@@ -334,6 +594,35 @@ router.delete(
   auth.requireUser,
   route((req, res) => {
     db.deleteImport(req.user!.id, validateRowId(req.params.id));
+    res.json({ ok: true });
+  }),
+);
+
+router.delete("/api/imports", auth.requireUser, (req: Request, res: Response) => {
+  db.transaction(() => db.deleteAllImports(req.user!.id));
+  res.json({ ok: true });
+});
+
+router.get("/api/export", auth.requireUser, (req: Request, res: Response) => {
+  res.setHeader("Content-Disposition", `attachment; filename="tim-con-heo-${Date.now()}.json"`);
+  res.json({
+    format: "tim-con-heo-export",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    user: req.user,
+    state: db.getState(req.user!.id),
+  });
+});
+
+router.delete(
+  "/api/account",
+  auth.requireUser,
+  asyncRoute(async (req, res) => {
+    const confirmed = await auth.authenticate(req.user!.username, req.body?.password);
+    if (confirmed.id !== req.user!.id) throw new Error("Account confirmation failed.");
+    const userId = req.user!.id;
+    auth.clearSession(req, res);
+    db.deleteUser(userId);
     res.json({ ok: true });
   }),
 );
@@ -410,12 +699,42 @@ router.get(
 );
 
 router.get("/api/health", (_req: Request, res: Response) => {
+  const backupFiles = (() => {
+    try {
+      return fs
+        .readdirSync(paths.backups)
+        .filter((name) => name.startsWith("timconheo-") && name.includes(".sqlite3"));
+    } catch {
+      return [] as string[];
+    }
+  })();
+  const latestBackupAt =
+    backupFiles
+      .map((name) => {
+        try {
+          return fs.statSync(path.join(paths.backups, name)).mtimeMs;
+        } catch {
+          return 0;
+        }
+      })
+      .sort((a, b) => b - a)[0] ?? 0;
+  const backupAgeHours = latestBackupAt ? Math.round((Date.now() - latestBackupAt) / 360000) / 10 : null;
+  const degraded = backupAgeHours === null || backupAgeHours > 48 ? ["backup-stale"] : [];
   res.json({
-    ok: true,
+    ok: db.ping(),
     version: config.version,
     commit: config.commit || null,
     startedAt: new Date(startedAt).toISOString(),
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+    database: { ok: db.ping() },
+    sync: { protocolVersion: 1, schemaVersion: 1 },
+    backup: {
+      count: backupFiles.length,
+      latestAt: latestBackupAt ? new Date(latestBackupAt).toISOString() : null,
+      ageHours: backupAgeHours,
+      retentionDays: 30,
+    },
+    degraded,
     limits: { importText: LIMITS.importText, importTitle: LIMITS.importTitle },
   });
 });

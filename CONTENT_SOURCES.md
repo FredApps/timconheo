@@ -2,7 +2,7 @@
 
 The Vietnamese shown in a sourced reading must reproduce the selected source variant word for word. English translations, word boundaries, glosses, and difficulty metadata are editorial learning aids and are not part of the quoted source.
 
-Twelve readings ship with the app: three tier-0 lessons, four folk rhymes, three folk verses, and two original prose scenes.
+Fifty readings ship with the app: three tier-0 lessons, three folk rhymes, three folk verses, two original prose scenes, and thirty-nine original graded lessons.
 
 ## Traditional material (public domain)
 
@@ -17,14 +17,6 @@ Anonymous traditional verse is public domain by age and anonymity. Published _co
 | _Trâu ơi ta bảo trâu này_        | [State Committee for Overseas Vietnamese Affairs (SCOV)](https://scov.gov.vn/que-huong/goc-thieu-nhi/ca-dao-ve-san-xuat.html)                                                                                         | The six-line “giữ nghiệp nông gia” variant, including the comma in “Ta đây trâu đấy, ai mà quản công”. Shorter four-line variants circulate and are not mixed in.                   |
 | _Đất Quảng Nam chưa mưa đà thấm_ | [Hội An Center for Cultural Heritage Management and Preservation](https://hoianheritage.danang.gov.vn/vi/trao-doi-chuyen-nganh/chuyen-de-nghien-cuu-trao-doi/do-thi-co-hoi-an-gia-tri-van-hoa-va-nghe-thuat-526.html) | The selected couplet preserves “đà” and includes the Hồng Đào line. [Báo Quảng Nam documents both “đã” and “đà” variants](https://baoquangnam.vn/dem-tuoi-mot-cau-ca-3154504.html). |
 
-## Attributed excerpt (rights reserved)
-
-| Reading            | Selected source                                                                                                               | Variant and rights note                                                                                                                                                                                                             |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _Mẹ yêu không nào_ | [Sheet music credited to Lê Xuân Thọ](https://truongca.com/images/sheet/pdf/me/me-yeu-khong-nao-le-xuan-tho-truongca.com.pdf) | A twentieth-century children's song with a named composer, **not** folklore. Only the short opening stanza is included, it is attributed on screen, and it carries the `copyrightedExcerpt` licence key rather than `publicDomain`. |
-
-This is the one reading in the corpus that is not freely licensed. If the project ever needs an entirely public-domain corpus, replacing this stanza with a traditional đồng dao is the single change required; nothing else depends on it.
-
 ## Original material
 
 | Reading                                                               | Rights                                                            |
@@ -32,6 +24,7 @@ This is the one reading in the corpus that is not freely licensed. If the projec
 | Tier 0 lessons (_Chữ đặc biệt_, _Năm đường nét_, _Những từ đầu tiên_) | Original Tìm Con Heo material, GPL-3.0-only with the application. |
 | _Buổi sáng bên sông Hàn_                                              | Original Tìm Con Heo material, GPL-3.0-only with the application. |
 | _Một vòng chợ Hội An_                                                 | Original Tìm Con Heo material, GPL-3.0-only with the application. |
+| _Mẹ và ba_ and 38 graded lessons                                      | Original Tìm Con Heo material, GPL-3.0-only with the application. |
 
 **The two prose scenes are set in Central Vietnam; they are not written in Central dialect.** They use standard Vietnamese with everyday vocabulary, and the reader says so on the page via each story's `attributionNote`. Where a genuinely regional form is worth knowing — _trái cây_ over _hoa quả_, _ly_ over _cốc_, _má_ over _mẹ_, the _đà_ of the Quảng Nam couplet — it appears as a Central note on the word, where it can be qualified, rather than being silently baked into a line and presented as authentic regional speech.
 
@@ -52,4 +45,4 @@ The stylised tone contours in the tone lab are teaching targets drawn by hand, n
 - every string is NFC-normalised, so a decomposed diacritic cannot silently break lookups;
 - story and sentence ids are unique;
 - every dictionary entry used by a shipped reading exists in the lexicon;
-- the attributed song is not labelled public domain, and every public-domain reading carries a verification URL.
+- no rights-reserved work ships, and every public-domain reading carries a verification URL.

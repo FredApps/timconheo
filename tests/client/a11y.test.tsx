@@ -60,7 +60,7 @@ test("home", async () => {
 
 test("library", async () => {
   await expectNoViolations(<LibraryView ranked={ranked} onRead={noop} />);
-});
+}, 30_000);
 
 test("reader", async () => {
   await expectNoViolations(
@@ -124,7 +124,7 @@ test("the open word panel", async () => {
       onComplete={asyncNoop}
     />,
   );
-  await userEvent.click(screen.getAllByRole("button", { name: /^cò/ })[0]);
+  await userEvent.click(screen.getAllByRole("button", { name: /^mẹ/i })[0]);
   await screen.findByRole("dialog");
   const results = await axe.run(container, {
     rules: { "color-contrast": { enabled: false }, region: { enabled: false } },

@@ -1,25 +1,12 @@
-# Architecture as built in v0.5.0
-
-This section records the implementation that exists in the repository. The earlier design brief below remains useful as product context, but its original single-user/no-account assumptions are superseded by the current account-backed architecture.
-
-## Runtime boundaries
-
-- `app/` is a Vite/React client. `App.tsx` is the shell; `app/views/` contains Home, Library, Reader, Review, Tones, Words, Garden, Import, and About views; `app/i18n/` owns language mode and bilingual labels.
-- `app/data.ts` contains the shipped tier 0–2 corpus and tone metadata. `app/lib/difficulty.ts` computes static and personal estimates client-side; `app/lib/pitch.ts` handles pitch normalization and contour scoring.
-- `server/` is an Express 5 API. `server/database.ts` is the SQLite boundary, `server/scheduler.ts` packs due/new cards, and `server/server.ts` applies FSRS scheduling and authentication.
-- `/api/state` returns words, progress, imports, and tone attempts. Cards are intentionally absent; `/api/cards/queue?minutes=N` is the only queue read path.
-
-## Persistence and scheduling
-
-Cards are server-owned and keyed to source sentences. Review time is a client-side wall-clock box around a server-created queue. New-card limits and forgiveness metadata are persisted in `users.settings_json`; the settings column is guarded by a startup migration for older databases. Known status is monotonic, while FSRS state remains authoritative for due dates.
-
-## Content and honesty
-
-Every story has kind, region, licence, source, and difficulty-band metadata. Difficulty is an estimate, not a gate: the Library remains open, shows unseen-token ratios, and exposes static inputs and frequency provenance. UI copy is translated through `T`/`BiText`; content translations and word glosses are separate from interface strings.
-
-## Verification boundary
-
-The supported remote workflow is `typecheck → test → build → install-server.ps1`. After deployment, verify `/heo/`, the public API health response, login, queue creation, review rating, language persistence, tone recording permissions, and mobile layout on a real device.
+> **Archived.** This is the original design brief, written in August 2026 before
+> any of the application existed. It is kept for product context: the pedagogy,
+> the Đà Nẵng dialect research and the anti-Duolingo reasoning are still what the
+> app is trying to do.
+>
+> **It is not a description of the code.** It proposes SvelteKit, Dexie, a Python
+> content pipeline and a single-user app with no accounts. None of that was built.
+> For how the application actually works, see
+> [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ---
 

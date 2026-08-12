@@ -6,3 +6,6 @@ coverage/
 corpus/local/
 package-lock.json
 app/data/freq-core.json
+# Historical documents are kept as they were written; reformatting them would
+# rewrite hundreds of lines of a file nobody is going to edit again.
+docs/archive/

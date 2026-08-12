@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { User } from "../shared/types";
+import type { CardKind, User } from "../shared/types";
 import type { AppView, Story, ThemeMode, Token, WordStatus } from "./types";
 import type { ImportRecord, ProgressRecord, WordRecord } from "./lib/api";
 import { api } from "./lib/api";
@@ -13,6 +13,8 @@ import { useT } from "./i18n";
 import { AppHeader } from "./components/AppHeader";
 import { BottomNav } from "./components/BottomNav";
 import { Toast } from "./components/Toast";
+import { SyncStatus } from "./components/SyncStatus";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { ErrorNote, Spinner } from "./components/feedback";
 import { useAsyncAction } from "./lib/async";
 import AboutView from "./views/AboutView";
@@ -25,7 +27,7 @@ import ReviewView from "./views/ReviewView";
 import TonesView from "./views/TonesView";
 import WordsView from "./views/WordsView";
 
-export default function App({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+export default function App({ user, onSignOut }: { user: User; onSignOut: (purge?: boolean) => void }) {
   const t = useT();
 
   const [view, setView] = useState<AppView>("home");
@@ -104,6 +106,20 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    const sync = () =>
+      void api
+        .sync()
+        .then(refresh)
+        .catch(() => undefined);
+    window.addEventListener("online", sync);
+    const timer = window.setInterval(sync, 60_000);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.clearInterval(timer);
+    };
+  }, [refresh]);
+
   const navigate = useCallback((next: AppView) => {
     setView(next);
     window.history.pushState(null, "", viewHash(next));
@@ -133,8 +149,11 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
   );
 
   const remember = useCallback(
-    async (token: Token, sentenceId: string) => {
-      await api.rememberWord(token.entry, token.gloss.en, sentenceId);
+    async (token: Token, sentenceId: string, kind: CardKind = "word") => {
+      await api.rememberWord(token.entry, token.gloss.en, sentenceId, kind, {
+        pronunciation: token.pronunciation,
+        central: token.central,
+      });
       await refresh();
       setToast(t("reader.savedWord", { entry: token.entry }));
     },
@@ -167,6 +186,8 @@ export default function App({ user, onSignOut }: { user: User; onSignOut: () => 
 
   return (
     <div className="app-shell">
+      <SyncStatus />
+      <UpdatePrompt />
       {view !== "reader" && (
         <AppHeader
           currentView={view}

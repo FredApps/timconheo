@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { randomUUID } from "node:crypto";
 import { HeoDatabase, MAX_TONE_ATTEMPTS } from "../../server/database.js";
 
 /** Every test gets its own file; none of them may touch the production database. */
@@ -36,6 +37,58 @@ test("tone attempts are capped so a drill cannot grow the table without bound", 
       db.addTone(userId, { tone: "hoi-nga", syllable: "mả", score: i / 1000 });
     }
     assert.equal(db.countTones(userId), MAX_TONE_ATTEMPTS);
+  } finally {
+    dispose();
+  }
+});
+
+test("sync operations are idempotent and cursor ordered", () => {
+  const { db, dispose } = temporaryDatabase();
+  try {
+    const userId = seedUser(db);
+    const operation = {
+      operationId: randomUUID(),
+      deviceId: randomUUID(),
+      entityId: randomUUID(),
+      kind: "word.status" as const,
+      occurredAt: Date.now(),
+      payload: { entry: "mẹ", status: "known" },
+    };
+    const first = db.recordSyncOperation(userId, operation, { ok: true });
+    assert.equal(db.getSyncOperation(userId, operation.operationId)?.sequence, first.sequence);
+    assert.equal(db.listSyncChanges(userId, 0).length, 1);
+    assert.equal(db.latestSyncCursor(userId), first.sequence);
+    assert.throws(() => db.recordSyncOperation(userId, operation, { ok: false }));
+  } finally {
+    dispose();
+  }
+});
+
+test("an import tombstone prevents a stale offline add from resurrecting deleted text", () => {
+  const { db, dispose } = temporaryDatabase();
+  try {
+    const userId = seedUser(db);
+    const entityId = randomUUID();
+    db.addImport(userId, { title: "One", raw: "Tôi đi.", difficulty: 1 }, entityId);
+    db.deleteImportEntity(userId, entityId);
+    assert.equal(db.listImports(userId).length, 0);
+    assert.throws(() => db.addImport(userId, { title: "Stale", raw: "Tôi đi.", difficulty: 1 }, entityId));
+  } finally {
+    dispose();
+  }
+});
+
+test("review events are returned in deterministic occurrence order", () => {
+  const { db, dispose } = temporaryDatabase();
+  try {
+    const userId = seedUser(db);
+    const cardId = "recognition:mẹ";
+    db.recordReviewEvent(userId, randomUUID(), cardId, 3, 2000);
+    db.recordReviewEvent(userId, randomUUID(), cardId, 1, 1000);
+    assert.deepEqual(
+      db.listReviewEvents(userId, cardId).map((event) => event.rating),
+      [1, 3],
+    );
   } finally {
     dispose();
   }

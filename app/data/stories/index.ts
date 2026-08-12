@@ -3,6 +3,7 @@ import { CA_DAO_STORIES } from "./ca-dao";
 import { CENTRAL_STORIES } from "./central";
 import { DONG_DAO_STORIES } from "./dong-dao";
 import { TIER0_STORIES } from "./tier0";
+import { EXPANDED_STORIES } from "./expanded";
 
 /**
  * The shipped corpus, in no particular order: the library sorts by tier and
@@ -13,6 +14,7 @@ export const STORIES: Story[] = [
   ...DONG_DAO_STORIES,
   ...CENTRAL_STORIES,
   ...CA_DAO_STORIES,
+  ...EXPANDED_STORIES,
 ];
 
-export { CA_DAO_STORIES, CENTRAL_STORIES, DONG_DAO_STORIES, TIER0_STORIES };
+export { CA_DAO_STORIES, CENTRAL_STORIES, DONG_DAO_STORIES, EXPANDED_STORIES, TIER0_STORIES };

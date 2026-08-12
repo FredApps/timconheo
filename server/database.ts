@@ -4,8 +4,11 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type {
   CardRecord,
+  DeviceSession,
   ImportRecord,
   ProgressRecord,
+  SyncChange,
+  SyncOperation,
   ToneAttempt,
   User,
   UserState,
@@ -128,14 +131,96 @@ export class HeoDatabase {
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_tones_user ON tone_attempts(user_id, created_at);      `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_operations (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        operation_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL,
+        accepted_at INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        result_json TEXT NOT NULL DEFAULT 'null',
+        UNIQUE(user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_user_sequence ON sync_operations(user_id, sequence);
+      CREATE TABLE IF NOT EXISTS import_tombstones (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entity_id TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL,
+        PRIMARY KEY(user_id, entity_id)
+      );
+      CREATE TABLE IF NOT EXISTS review_events (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        operation_id TEXT NOT NULL,
+        card_id TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        occurred_at INTEGER NOT NULL,
+        accepted_at INTEGER NOT NULL,
+        PRIMARY KEY(user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_review_card ON review_events(user_id, card_id, occurred_at, accepted_at);
+      CREATE TABLE IF NOT EXISTS review_baselines (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        card_id TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY(user_id, card_id)
+      );
+    `);
     const columns = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
     if (!columns.some((column) => column.name === "settings_json")) {
       this.db.exec("ALTER TABLE users ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'");
+    }
+    const importColumns = this.db.prepare("PRAGMA table_info(imports)").all() as Array<{ name: string }>;
+    if (!importColumns.some((column) => column.name === "entity_id")) {
+      this.db.exec("ALTER TABLE imports ADD COLUMN entity_id TEXT");
+      const rows = this.db.prepare("SELECT id FROM imports WHERE entity_id IS NULL").all() as Array<{
+        id: number;
+      }>;
+      const update = this.db.prepare("UPDATE imports SET entity_id = ? WHERE id = ?");
+      for (const row of rows) update.run(randomUUID(), row.id);
+      this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_imports_entity ON imports(user_id, entity_id)");
+    }
+    const toneColumns = this.db.prepare("PRAGMA table_info(tone_attempts)").all() as Array<{ name: string }>;
+    if (!toneColumns.some((column) => column.name === "entity_id")) {
+      this.db.exec("ALTER TABLE tone_attempts ADD COLUMN entity_id TEXT");
+      const rows = this.db.prepare("SELECT id FROM tone_attempts WHERE entity_id IS NULL").all() as Array<{
+        id: number;
+      }>;
+      const update = this.db.prepare("UPDATE tone_attempts SET entity_id = ? WHERE id = ?");
+      for (const row of rows) update.run(randomUUID(), row.id);
+      this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tones_entity ON tone_attempts(user_id, entity_id)");
+    }
+    const cardColumns = this.db.prepare("PRAGMA table_info(cards)").all() as Array<{ name: string }>;
+    if (!cardColumns.some((column) => column.name === "kind")) {
+      this.db.exec("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'word'");
+    }
+    if (!cardColumns.some((column) => column.name === "payload_json")) {
+      this.db.exec("ALTER TABLE cards ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'");
     }
   }
 
   close(): void {
     this.db.close();
+  }
+
+  transaction<T>(work: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = work();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  ping(): boolean {
+    return Number((this.db.prepare("SELECT 1 AS ok").get() as { ok: number }).ok) === 1;
   }
 
   // -- users -----------------------------------------------------------------
@@ -237,6 +322,23 @@ export class HeoDatabase {
     this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
   }
 
+  listSessions(userId: string, currentId?: string): DeviceSession[] {
+    const rows = this.db
+      .prepare("SELECT id, created_at, last_seen FROM sessions WHERE user_id = ? ORDER BY last_seen DESC")
+      .all(userId) as Array<{ id: string; created_at: number; last_seen: number }>;
+    return rows.map((row) => ({
+      id: row.id,
+      deviceName: "Web or Android device",
+      createdAt: Number(row.created_at),
+      lastSeen: Number(row.last_seen),
+      current: row.id === currentId,
+    }));
+  }
+
+  deleteSession(userId: string, sessionId: string): void {
+    this.db.prepare("DELETE FROM sessions WHERE user_id = ? AND id = ?").run(userId, sessionId);
+  }
+
   purgeExpiredSessions(): void {
     this.db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
   }
@@ -249,6 +351,8 @@ export class HeoDatabase {
       progress: this.listProgress(userId),
       imports: this.listImports(userId),
       tones: this.listTones(userId),
+      cards: this.listCards(userId),
+      syncCursor: this.latestSyncCursor(userId),
     };
   }
 
@@ -311,6 +415,8 @@ export class HeoDatabase {
       card: JSON.parse(String(row.card_json)),
       due: Number(row.due),
       updatedAt: Number(row.updated_at),
+      kind: (typeof row.kind === "string" ? row.kind : "word") as CardRecord["kind"],
+      payload: JSON.parse(typeof row.payload_json === "string" ? row.payload_json : "{}"),
     }));
   }
 
@@ -326,6 +432,8 @@ export class HeoDatabase {
       card: JSON.parse(String(row.card_json)),
       due: Number(row.due),
       updatedAt: Number(row.updated_at),
+      kind: (typeof row.kind === "string" ? row.kind : "word") as CardRecord["kind"],
+      payload: JSON.parse(typeof row.payload_json === "string" ? row.payload_json : "{}"),
     }));
   }
 
@@ -369,17 +477,20 @@ export class HeoDatabase {
       card: JSON.parse(String(row.card_json)),
       due: Number(row.due),
       updatedAt: Number(row.updated_at),
+      kind: (typeof row.kind === "string" ? row.kind : "word") as CardRecord["kind"],
+      payload: JSON.parse(typeof row.payload_json === "string" ? row.payload_json : "{}"),
     };
   }
 
   putCard(userId: string, card: CardRecord): void {
     this.db
       .prepare(
-        `INSERT INTO cards (user_id, id, entry, gloss, source_sentence_id, card_json, due, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO cards (user_id, id, entry, gloss, source_sentence_id, card_json, due, updated_at, kind, payload_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(user_id, id) DO UPDATE SET
            gloss = excluded.gloss, card_json = excluded.card_json,
-           due = excluded.due, updated_at = excluded.updated_at`,
+           due = excluded.due, updated_at = excluded.updated_at,
+           kind = excluded.kind, payload_json = excluded.payload_json`,
       )
       .run(
         userId,
@@ -390,6 +501,8 @@ export class HeoDatabase {
         JSON.stringify(card.card),
         card.due,
         card.updatedAt,
+        card.kind ?? "word",
+        JSON.stringify(card.payload ?? {}),
       );
   }
 
@@ -431,6 +544,7 @@ export class HeoDatabase {
       .all(userId) as Record<string, unknown>[];
     return rows.map((row) => ({
       id: Number(row.id),
+      entityId: String(row.entity_id),
       title: String(row.title),
       raw: String(row.raw),
       difficulty: Number(row.difficulty),
@@ -438,16 +552,27 @@ export class HeoDatabase {
     }));
   }
 
-  addImport(userId: string, input: { title: string; raw: string; difficulty: number }): ImportRecord {
+  addImport(
+    userId: string,
+    input: { title: string; raw: string; difficulty: number },
+    entityId: string = randomUUID(),
+  ): ImportRecord {
+    const tombstone = this.db
+      .prepare("SELECT 1 AS present FROM import_tombstones WHERE user_id = ? AND entity_id = ?")
+      .get(userId, entityId);
+    if (tombstone) throw new Error("IMPORT_DELETED");
     const importedAt = Date.now();
     this.db
-      .prepare("INSERT INTO imports (user_id, title, raw, difficulty, imported_at) VALUES (?, ?, ?, ?, ?)")
-      .run(userId, input.title, input.raw, input.difficulty, importedAt);
+      .prepare(
+        "INSERT OR IGNORE INTO imports (user_id, title, raw, difficulty, imported_at, entity_id) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(userId, input.title, input.raw, input.difficulty, importedAt, entityId);
     const row = this.db
-      .prepare("SELECT * FROM imports WHERE user_id = ? ORDER BY id DESC LIMIT 1")
-      .get(userId) as Record<string, unknown>;
+      .prepare("SELECT * FROM imports WHERE user_id = ? AND entity_id = ?")
+      .get(userId, entityId) as Record<string, unknown>;
     return {
       id: Number(row.id),
+      entityId: String(row.entity_id),
       title: String(row.title),
       raw: String(row.raw),
       difficulty: Number(row.difficulty),
@@ -456,7 +581,27 @@ export class HeoDatabase {
   }
 
   deleteImport(userId: string, id: number): void {
-    this.db.prepare("DELETE FROM imports WHERE user_id = ? AND id = ?").run(userId, id);
+    const row = this.db
+      .prepare("SELECT entity_id FROM imports WHERE user_id = ? AND id = ?")
+      .get(userId, id) as { entity_id: string } | undefined;
+    if (row) this.deleteImportEntity(userId, row.entity_id);
+  }
+
+  deleteImportEntity(userId: string, entityId: string): void {
+    const now = Date.now();
+    this.db
+      .prepare(
+        "INSERT INTO import_tombstones (user_id, entity_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT(user_id, entity_id) DO UPDATE SET deleted_at = MAX(deleted_at, excluded.deleted_at)",
+      )
+      .run(userId, entityId, now);
+    this.db.prepare("DELETE FROM imports WHERE user_id = ? AND entity_id = ?").run(userId, entityId);
+  }
+
+  deleteAllImports(userId: string): void {
+    const rows = this.db.prepare("SELECT entity_id FROM imports WHERE user_id = ?").all(userId) as Array<{
+      entity_id: string;
+    }>;
+    for (const row of rows) this.deleteImportEntity(userId, row.entity_id);
   }
 
   listTones(userId: string): ToneAttempt[] {
@@ -465,6 +610,7 @@ export class HeoDatabase {
       .all(userId) as Record<string, unknown>[];
     return rows.map((row) => ({
       id: Number(row.id),
+      entityId: String(row.entity_id),
       tone: String(row.tone),
       syllable: String(row.syllable),
       score: Number(row.score),
@@ -472,12 +618,16 @@ export class HeoDatabase {
     }));
   }
 
-  addTone(userId: string, input: { tone: string; syllable: string; score: number }): void {
+  addTone(
+    userId: string,
+    input: { tone: string; syllable: string; score: number },
+    entityId: string = randomUUID(),
+  ): void {
     this.db
       .prepare(
-        "INSERT INTO tone_attempts (user_id, tone, syllable, score, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO tone_attempts (user_id, tone, syllable, score, created_at, entity_id) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(userId, input.tone, input.syllable, input.score, Date.now());
+      .run(userId, input.tone, input.syllable, input.score, Date.now(), entityId);
     this.trimTones(userId);
   }
 
@@ -503,5 +653,101 @@ export class HeoDatabase {
       n: number;
     };
     return Number(row.n);
+  }
+
+  getSyncOperation(userId: string, operationId: string): SyncChange | null {
+    const row = this.db
+      .prepare("SELECT * FROM sync_operations WHERE user_id = ? AND operation_id = ?")
+      .get(userId, operationId) as Record<string, unknown> | undefined;
+    return row ? this.toSyncChange(row) : null;
+  }
+
+  recordSyncOperation(userId: string, operation: SyncOperation, result: unknown): SyncChange {
+    const acceptedAt = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO sync_operations
+          (user_id, operation_id, device_id, entity_id, kind, occurred_at, accepted_at, payload_json, result_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        userId,
+        operation.operationId,
+        operation.deviceId,
+        operation.entityId,
+        operation.kind,
+        operation.occurredAt,
+        acceptedAt,
+        JSON.stringify(operation.payload),
+        JSON.stringify(result ?? null),
+      );
+    return this.getSyncOperation(userId, operation.operationId)!;
+  }
+
+  listSyncChanges(userId: string, cursor: number, limit = 1000): SyncChange[] {
+    const rows = this.db
+      .prepare("SELECT * FROM sync_operations WHERE user_id = ? AND sequence > ? ORDER BY sequence LIMIT ?")
+      .all(userId, cursor, limit) as Record<string, unknown>[];
+    return rows.map((row) => this.toSyncChange(row));
+  }
+
+  latestSyncCursor(userId: string): number {
+    const row = this.db
+      .prepare("SELECT COALESCE(MAX(sequence), 0) AS cursor FROM sync_operations WHERE user_id = ?")
+      .get(userId) as { cursor: number };
+    return Number(row.cursor);
+  }
+
+  recordReviewEvent(
+    userId: string,
+    operationId: string,
+    cardId: string,
+    rating: number,
+    occurredAt: number,
+  ): void {
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO review_events (user_id, operation_id, card_id, rating, occurred_at, accepted_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(userId, operationId, cardId, rating, occurredAt, Date.now());
+  }
+
+  ensureReviewBaseline(userId: string, card: CardRecord): void {
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO review_baselines (user_id, card_id, record_json, created_at) VALUES (?, ?, ?, ?)",
+      )
+      .run(userId, card.id, JSON.stringify(card), Date.now());
+  }
+
+  getReviewBaseline(userId: string, cardId: string): CardRecord | null {
+    const row = this.db
+      .prepare("SELECT record_json FROM review_baselines WHERE user_id = ? AND card_id = ?")
+      .get(userId, cardId) as { record_json: string } | undefined;
+    return row ? (JSON.parse(row.record_json) as CardRecord) : null;
+  }
+
+  listReviewEvents(userId: string, cardId: string): Array<{ rating: number; occurredAt: number }> {
+    const rows = this.db
+      .prepare(
+        "SELECT rating, occurred_at FROM review_events WHERE user_id = ? AND card_id = ? ORDER BY occurred_at, accepted_at, operation_id",
+      )
+      .all(userId, cardId) as Array<{ rating: number; occurred_at: number }>;
+    return rows.map((row) => ({ rating: Number(row.rating), occurredAt: Number(row.occurred_at) }));
+  }
+
+  deleteUser(userId: string): void {
+    this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+  }
+
+  private toSyncChange(row: Record<string, unknown>): SyncChange {
+    return {
+      sequence: Number(row.sequence),
+      operationId: String(row.operation_id),
+      entityId: String(row.entity_id),
+      kind: String(row.kind) as SyncChange["kind"],
+      acceptedAt: Number(row.accepted_at),
+      result: JSON.parse(String(row.result_json)),
+    };
   }
 }

@@ -1,8 +1,9 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
+import type { CardKind } from "../../../shared/types";
 import { Info, Leaf, Sparkles, Volume2, X } from "lucide-react";
 import type { Token, WordStatus } from "../../types";
 import { BiText, T, useT } from "../../i18n";
-import { POS_LABELS, STATUS_KEYS } from "../../i18n/content";
+import { POS_LABELS, STATUS_KEYS, V07_TEXT } from "../../i18n/content";
 import { AsyncButton, ErrorNote } from "../../components/feedback";
 import { useAsyncAction } from "../../lib/async";
 import { useDialog } from "../../lib/focus";
@@ -32,16 +33,17 @@ export function WordPanel({
   sentenceId: string;
   statuses: Record<string, WordStatus>;
   onClose: () => void;
-  onRemember: (token: Token, sentenceId: string) => Promise<void>;
+  onRemember: (token: Token, sentenceId: string, kind?: CardKind) => Promise<void>;
   onStatus: (entry: string, status: WordStatus) => Promise<void>;
 }) {
   const t = useT();
   const { speak } = useSpeech();
   const panel = useRef<HTMLDivElement>(null);
+  const [cardKind, setCardKind] = useState<CardKind>("word");
   useDialog(panel, true, onClose);
 
   const save = useAsyncAction(async () => {
-    await onRemember(token, sentenceId);
+    await onRemember(token, sentenceId, cardKind);
   });
   const setStatus = useAsyncAction(async (status: WordStatus) => {
     await onStatus(token.entry, status);
@@ -146,6 +148,20 @@ export function WordPanel({
             ))}
           </div>
           {setStatus.errorKey && <ErrorNote messageKey={setStatus.errorKey} />}
+        </div>
+
+        <div className="card-kind-picker" role="group" aria-label="Review card type">
+          {(["word", "cloze", "listening", "grammar"] as CardKind[]).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={cardKind === kind}
+              className={cardKind === kind ? "active" : ""}
+              onClick={() => setCardKind(kind)}
+            >
+              <BiText value={V07_TEXT.cardTypes[kind]} />
+            </button>
+          ))}
         </div>
 
         <AsyncButton

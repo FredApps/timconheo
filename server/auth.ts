@@ -92,14 +92,16 @@ export class AuthService {
   }
 
   issueSession(user: User, res: Response): void {
-    const token = randomBytes(32).toString("base64url");
-    const expiresAt = Date.now() + SESSION_MS;
-    this.db.createSession(user.id, hashSessionToken(token), expiresAt);
+    const { token, expiresAt } = this.createSessionToken(user);
     this.setCookie(res, token, expiresAt);
   }
 
+  issueBearerSession(user: User): string {
+    return this.createSessionToken(user).token;
+  }
+
   clearSession(req: Request, res: Response): void {
-    const token = cookies(req.headers.cookie).get(config.cookieName);
+    const token = this.requestToken(req);
     if (token) this.db.deleteSessionByHash(hashSessionToken(token));
     res.clearCookie(config.cookieName, {
       path: config.basePath,
@@ -110,7 +112,7 @@ export class AuthService {
   }
 
   middleware = (req: Request, res: Response, next: NextFunction): void => {
-    const token = cookies(req.headers.cookie).get(config.cookieName);
+    const token = this.requestToken(req);
     if (!token) return next();
     const session = this.db.getSession(hashSessionToken(token));
     if (!session || session.user.disabled) {
@@ -148,6 +150,22 @@ export class AuthService {
       path: config.basePath,
       expires: new Date(expiresAt),
     });
+  }
+
+  private createSessionToken(user: User): { token: string; expiresAt: number } {
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = Date.now() + SESSION_MS;
+    this.db.createSession(user.id, hashSessionToken(token), expiresAt);
+    return { token, expiresAt };
+  }
+
+  private requestToken(req: Request): string | undefined {
+    const authorization = req.get("authorization");
+    if (authorization?.startsWith("Bearer ")) {
+      const token = authorization.slice(7).trim();
+      if (token) return token;
+    }
+    return cookies(req.headers.cookie).get(config.cookieName);
   }
 }
 
