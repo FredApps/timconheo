@@ -23,7 +23,7 @@ while ($true) {
   @{ event = "start"; at = $started.ToUniversalTime().ToString("o"); appDir = $AppDir } |
     ConvertTo-Json -Compress | Add-Content -LiteralPath "$logDir\service.jsonl"
 
-  & $node "$AppDir\dist\server\server.js" 1>> "$logDir\server.out.log" 2>> "$logDir\server.err.log"
+  & $node "$AppDir\dist\server\heo-server.js" 1>> "$logDir\server.out.log" 2>> "$logDir\server.err.log"
   $code = $LASTEXITCODE
   @{ event = "exit"; at = (Get-Date).ToUniversalTime().ToString("o"); code = $code; uptimeSeconds = [int]((Get-Date) - $started).TotalSeconds } |
     ConvertTo-Json -Compress | Add-Content -LiteralPath "$logDir\service.jsonl"

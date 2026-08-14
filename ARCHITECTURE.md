@@ -21,7 +21,7 @@ browser / Android WebView
 IIS reverse proxy   ^heo(/.*)$ -> http://127.0.0.1:3092/heo{R:1}
         |
         v
-Express 5 + built SPA          (supervisor: scripts/start-server.ps1)
+Express 5 + built SPA          (supervisor: scripts/start-heo-server.ps1)
         |
         +--> SQLite   C:\ProgramData\TimConHeo\timconheo.sqlite3
         +--> mp3 cache C:\ProgramData\TimConHeo\tts-cache

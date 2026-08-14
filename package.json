@@ -15,9 +15,9 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "concurrently -k \"tsx watch server/server.ts\" \"vite --host 127.0.0.1\"",
+    "dev": "concurrently -k \"tsx watch server/heo-server.ts\" \"vite --host 127.0.0.1\"",
     "build": "vite build && tsc -p tsconfig.server.json",
-    "start": "node dist/server/server.js",
+    "start": "node dist/server/heo-server.js",
     "admin": "tsx server/admin.ts",
     "backup": "tsx scripts/backup-db.ts",
     "restore": "tsx scripts/restore-backup.ts",

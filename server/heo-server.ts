@@ -42,7 +42,7 @@ import { forgiveBacklog, packQueue } from "./scheduler.js";
 import { FptTtsService, TtsError } from "./tts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// dist/server/server.js -> dist/client
+// dist/server/heo-server.js -> dist/client
 const clientDir = path.resolve(here, "../client");
 
 const db = new HeoDatabase();

@@ -21,7 +21,7 @@ function int(value: string | undefined, fallback: number, min: number, max: numb
 /**
  * The version has to come from the package manifest rather than
  * `npm_package_version`, because the supervisor starts the server with plain
- * `node dist/server/server.js` and npm never sets that variable there. Walking
+ * `node dist/server/heo-server.js` and npm never sets that variable there. Walking
  * up from the module handles both `server/` (tsx, development) and
  * `dist/server/` (built, production).
  */

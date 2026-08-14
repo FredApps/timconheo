@@ -89,7 +89,12 @@ try {
 } finally { Pop-Location }
 
 Stop-ScheduledTask -TaskName "TimConHeoServer" -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match 'TimConHeo.+dist[\\/]server[\\/]server\.js' } |
+# The entry point was `server.js` before v0.7.1 and is `heo-server.js` after it.
+# Both are matched so that the deploy which performs the rename can still stop
+# the release it is replacing; otherwise the old process keeps port 3092 and the
+# new release fails health verification and rolls itself back.
+$entryPointPattern = 'dist[\\/]server[\\/](heo-)?server\.js'
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match "TimConHeo.+$entryPointPattern" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 # The v0.6 emergency process was launched from its working directory, so its
 # command line may not include the app path. Stop only a Node process proven to
@@ -98,7 +103,7 @@ Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 3092 -State Listen -Erro
   Select-Object -ExpandProperty OwningProcess -Unique |
   ForEach-Object {
     $listener = Get-CimInstance Win32_Process -Filter "ProcessId = $_"
-    if ($listener.Name -eq "node.exe" -and $listener.CommandLine -match 'dist[\\/]server[\\/]server\.js') {
+    if ($listener.Name -eq "node.exe" -and $listener.CommandLine -match $entryPointPattern) {
       Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
     }
   }
@@ -110,7 +115,7 @@ New-Item -ItemType Junction -Path $nextLink -Target $releaseDir | Out-Null
 if (Test-Path $currentDir) { Move-Item -LiteralPath $currentDir -Destination $previousLink }
 Move-Item -LiteralPath $nextLink -Destination $currentDir
 
-$serverAction = New-ScheduledTaskAction -Execute $PowerShell -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$currentDir\scripts\start-server.ps1`" -AppDir `"$currentDir`""
+$serverAction = New-ScheduledTaskAction -Execute $PowerShell -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$currentDir\scripts\start-heo-server.ps1`" -AppDir `"$currentDir`""
 $serverSettings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName "TimConHeoServer" -Action $serverAction -Trigger (New-ScheduledTaskTrigger -AtStartup) -Settings $serverSettings -Principal $principal -Force | Out-Null

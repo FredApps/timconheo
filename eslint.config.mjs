@@ -103,11 +103,11 @@ export default defineConfig([
     },
   },
   // Express exposes request bodies as any at the HTTP boundary. They are
-  // immediately passed through the runtime validators in server/server.ts;
+  // immediately passed through the runtime validators in server/heo-server.ts;
   // unsafe member access here would report the framework type rather than the
   // actual validation contract.
   {
-    files: ["server/server.ts"],
+    files: ["server/heo-server.ts"],
     rules: {
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
