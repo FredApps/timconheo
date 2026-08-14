@@ -4,6 +4,8 @@
 
 - Added `HEO_AUTO_LOGIN_USER`: when set, every request without a session is signed in as that account automatically, with no login page. Off by default, opt-in via `.env`, logged loudly on every start while active. See "Auto-login" in [ARCHITECTURE.md](ARCHITECTURE.md) before turning it on anywhere reachable from outside a trusted network.
 - Renamed the server entry point and its supervisor script from `server.js`/`start-server.ps1` to `heo-server.js`/`start-heo-server.ps1`, so a process or scheduled-task list no longer reads identically to the sibling `listen` and `watch` services on the same host.
+- Fixed a supervisor bug that crash-looped the server the moment it wrote anything to stderr: Windows PowerShell turns a native child's stderr line into a terminating error under `$ErrorActionPreference = "Stop"`, which was already true of the existing 500-error logging and became visible the moment a startup line used `console.warn`. `start-heo-server.ps1` now scopes `Continue` around the child process call.
+- Fixed `install-server.ps1`'s release-junction handling, which could hit a confirmation prompt that hangs a non-interactive deploy, or (with `-Recurse`) delete a release's real content instead of just unlinking the pointer to it. Junction removal now goes through `[System.IO.Directory]::Delete`, and the post-deploy health check window was widened from 20s to 60s to match how long a cold start after `npm ci` actually takes.
 
 ## 0.7.0 — 2026-08-12
 

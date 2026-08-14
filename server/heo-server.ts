@@ -800,7 +800,10 @@ setInterval(() => db.purgeExpiredSessions(), 60 * 60 * 1000).unref();
 if (config.autoLoginUser) {
   // Printed on every start, not just once, because this line is the only
   // record in the logs that authentication is off for this deployment.
-  console.warn(
+  // console.log rather than console.warn: this is an operational fact, not an
+  // error, and stderr is reserved for the latter -- see start-heo-server.ps1
+  // for why a stray stderr line from this process is not something to court.
+  console.log(
     `[heo] AUTHENTICATION DISABLED: every request without a session is signed in as ` +
       `"${config.autoLoginUser}". Remove HEO_AUTO_LOGIN_USER to require login again.`,
   );

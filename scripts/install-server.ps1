@@ -18,6 +18,19 @@ $previousLink = Join-Path $DataDir "current.previous"
 $sharedEnv = Join-Path $DataDir ".env"
 $backupKey = Join-Path $DataDir "backups\.backup-key"
 
+function Remove-Junction {
+  # Remove-Item's handling of NTFS junctions is unreliable in a non-interactive
+  # Windows PowerShell 5.1 host: without -Recurse it can hit an unsuppressable
+  # confirmation prompt ("Read and Prompt functionality is not available"), and
+  # with -Recurse it can follow the reparse point and delete the *target's*
+  # contents instead of just unlinking it. Both failure modes have happened on
+  # this exact deployment. [System.IO.Directory]::Delete($path, $false) is the
+  # one reliable way to remove a junction and leave its target alone.
+  param([Parameter(Mandatory)][string]$Path)
+  try { [System.IO.Directory]::Delete($Path, $false) }
+  catch [System.IO.DirectoryNotFoundException] { }
+}
+
 foreach ($directory in @($DataDir, "$DataDir\logs", "$DataDir\backups", "$DataDir\downloads", $releaseRoot)) {
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
 }
@@ -108,9 +121,7 @@ Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 3092 -State Listen -Erro
     }
   }
 
-foreach ($pathToClear in @($nextLink, $previousLink)) {
-  if (Test-Path $pathToClear) { Remove-Item -LiteralPath $pathToClear -Force }
-}
+foreach ($pathToClear in @($nextLink, $previousLink)) { Remove-Junction -Path $pathToClear }
 New-Item -ItemType Junction -Path $nextLink -Target $releaseDir | Out-Null
 if (Test-Path $currentDir) { Move-Item -LiteralPath $currentDir -Destination $previousLink }
 Move-Item -LiteralPath $nextLink -Destination $currentDir
@@ -146,15 +157,22 @@ $xml.Save($WebConfig)
 & icacls $DataDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
 Start-ScheduledTask -TaskName "TimConHeoServer"
 $healthy = $false
-for ($attempt = 0; $attempt -lt 40; $attempt++) {
+# 120 * 500ms = 60s. A cold start right after `npm ci` extracted several hundred
+# packages has taken noticeably longer than the previous 20s budget; a real
+# startup failure (crash, bad config) still surfaces well within this window,
+# it just no longer gets mistaken for one under ordinary disk/AV load.
+for ($attempt = 0; $attempt -lt 120; $attempt++) {
   Start-Sleep -Milliseconds 500
   try { $health = Invoke-RestMethod "http://127.0.0.1:3092/heo/api/health" -TimeoutSec 2; if ($health.ok -and $health.commit -eq $commit) { $healthy = $true; break } } catch {}
 }
 if (-not $healthy) {
   Stop-ScheduledTask -TaskName "TimConHeoServer" -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $currentDir -Force
-  if (Test-Path $previousLink) { Move-Item -LiteralPath $previousLink -Destination $currentDir; Start-ScheduledTask -TaskName "TimConHeoServer" }
+  Remove-Junction -Path $currentDir
+  if (Test-Path $previousLink) {
+    Move-Item -LiteralPath $previousLink -Destination $currentDir
+    Start-ScheduledTask -TaskName "TimConHeoServer"
+  }
   throw "New release failed health verification; previous release restored."
 }
-if (Test-Path $previousLink) { Remove-Item -LiteralPath $previousLink -Force }
+Remove-Junction -Path $previousLink
 Write-Host "Tim Con Heo $commit is healthy at https://ayrien.se/heo/" -ForegroundColor Green

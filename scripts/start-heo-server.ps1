@@ -23,8 +23,18 @@ while ($true) {
   @{ event = "start"; at = $started.ToUniversalTime().ToString("o"); appDir = $AppDir } |
     ConvertTo-Json -Compress | Add-Content -LiteralPath "$logDir\service.jsonl"
 
+  # PowerShell wraps a native process's stderr output into an ErrorRecord even
+  # when redirected to a file, and under $ErrorActionPreference = "Stop" the
+  # very first such line becomes a terminating exception right here -- killing
+  # the supervisor before the child has even reached app.listen(), with no exit
+  # event logged. heo-server.js legitimately writes to stderr (startup warnings,
+  # 5xx error logging), so this must not be fatal. Scoped to just this call, so
+  # the rest of the script keeps failing loudly on its own mistakes.
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   & $node "$AppDir\dist\server\heo-server.js" 1>> "$logDir\server.out.log" 2>> "$logDir\server.err.log"
   $code = $LASTEXITCODE
+  $ErrorActionPreference = $previousErrorAction
   @{ event = "exit"; at = (Get-Date).ToUniversalTime().ToString("o"); code = $code; uptimeSeconds = [int]((Get-Date) - $started).TotalSeconds } |
     ConvertTo-Json -Compress | Add-Content -LiteralPath "$logDir\service.jsonl"
 
