@@ -9,7 +9,8 @@ import {
   securityHeaders,
   verifyPassword,
 } from "../../server/auth.js";
-import type { HeoDatabase } from "../../server/database.js";
+import { config } from "../../server/config.js";
+import type { HeoDatabase, UserAuthRecord } from "../../server/database.js";
 import type { User } from "../../shared/types.js";
 
 function fakeResponse(): Response & { headers: Record<string, string>; statusCode: number; body: unknown } {
@@ -28,6 +29,12 @@ function fakeResponse(): Response & { headers: Record<string, string>; statusCod
     },
     json(payload: unknown) {
       res.body = payload;
+      return res;
+    },
+    cookie() {
+      return res;
+    },
+    clearCookie() {
       return res;
     },
   };
@@ -135,4 +142,115 @@ test("a revocable bearer session authenticates Android requests without cookies"
   assert.equal(nextCalled, true);
   assert.equal(req.user?.id, user.id);
   assert.equal(req.sessionId, "session-1");
+});
+
+test("auto-login is off by default: a request with no session reaches no user", () => {
+  assert.equal(config.autoLoginUser, "", "test isolation requires this to start empty");
+  const db = {
+    getSession: () => null,
+    getUserAuth: () => null,
+  } as unknown as HeoDatabase;
+  const auth = new AuthService(db);
+  const req = { headers: {}, get: () => undefined } as unknown as Request;
+  let nextCalled = false;
+  auth.middleware(req, fakeResponse(), () => {
+    nextCalled = true;
+  });
+  assert.equal(nextCalled, true);
+  assert.equal(req.user, undefined);
+});
+
+test("HEO_AUTO_LOGIN_USER signs in a sessionless request as that account", () => {
+  const fredrik: User = {
+    id: "user-fredrik",
+    username: "fredrik",
+    isAdmin: true,
+    disabled: false,
+    createdAt: new Date().toISOString(),
+  };
+  const authRecord: UserAuthRecord = { user: fredrik, passwordHash: "h", passwordSalt: "s" };
+  let sessionsCreated = 0;
+  const db = {
+    getSession: () => null,
+    getUserAuth: (usernameNorm: string) => (usernameNorm === "fredrik" ? authRecord : null),
+    createSession: () => {
+      sessionsCreated += 1;
+    },
+  } as unknown as HeoDatabase;
+  const auth = new AuthService(db);
+  const previous = config.autoLoginUser;
+  config.autoLoginUser = "fredrik";
+  try {
+    const req = { headers: {}, get: () => undefined } as unknown as Request;
+    let nextCalled = false;
+    auth.middleware(req, fakeResponse(), () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+    assert.equal(req.user?.username, "fredrik");
+    // A real session backs the auto-login, so the same person is not silently
+    // re-authenticated as a different identity on every single request.
+    assert.equal(sessionsCreated, 1);
+  } finally {
+    config.autoLoginUser = previous;
+  }
+});
+
+test("auto-login never applies to a disabled account", () => {
+  const disabled: User = {
+    id: "user-disabled",
+    username: "fredrik",
+    isAdmin: false,
+    disabled: true,
+    createdAt: new Date().toISOString(),
+  };
+  const authRecord: UserAuthRecord = { user: disabled, passwordHash: "h", passwordSalt: "s" };
+  const db = {
+    getSession: () => null,
+    getUserAuth: () => authRecord,
+    createSession: () => {
+      throw new Error("must not issue a session for a disabled account");
+    },
+  } as unknown as HeoDatabase;
+  const auth = new AuthService(db);
+  const previous = config.autoLoginUser;
+  config.autoLoginUser = "fredrik";
+  try {
+    const req = { headers: {}, get: () => undefined } as unknown as Request;
+    auth.middleware(req, fakeResponse(), () => undefined);
+    assert.equal(req.user, undefined);
+  } finally {
+    config.autoLoginUser = previous;
+  }
+});
+
+test("auto-login replaces an expired or otherwise invalid session, not just a missing one", () => {
+  const fredrik: User = {
+    id: "user-fredrik",
+    username: "fredrik",
+    isAdmin: true,
+    disabled: false,
+    createdAt: new Date().toISOString(),
+  };
+  const authRecord: UserAuthRecord = { user: fredrik, passwordHash: "h", passwordSalt: "s" };
+  const db = {
+    // The presented cookie no longer maps to a live session.
+    getSession: () => null,
+    getUserAuth: () => authRecord,
+    createSession: () => undefined,
+  } as unknown as HeoDatabase;
+  const auth = new AuthService(db);
+  const previous = config.autoLoginUser;
+  config.autoLoginUser = "fredrik";
+  try {
+    const res = fakeResponse();
+    const req = {
+      headers: { cookie: `${config.cookieName}=stale-token` },
+      get: () => undefined,
+    } as unknown as Request;
+    auth.middleware(req, res, () => undefined);
+    assert.equal(req.user?.username, "fredrik");
+  } finally {
+    config.autoLoginUser = previous;
+  }
 });

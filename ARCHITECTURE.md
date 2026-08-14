@@ -38,6 +38,10 @@ The split is deliberate: anything a second device must agree about lives on the 
 
 **Client** — presentation, language mode, theme, reader text size, difficulty estimates, microphone pitch capture, and device-voice fallback. Difficulty is computed client-side because the server has no copy of the corpus and giving it one would duplicate the content.
 
+### Auto-login
+
+`HEO_AUTO_LOGIN_USER`, if set, makes `AuthService.middleware` silently issue a session for that account whenever a request has none — no login page, no credential check, for anyone who reaches the URL. It is off by default, must be set explicitly in `.env`, and the server logs a warning on every start while it is active. Use it only where the deployment itself is the access control (a private network, a single trusted device) — `https://ayrien.se/heo/` is not that, since it is reachable by anyone.
+
 ## Client modules
 
 | Path              | Responsibility                                                                                                                             |

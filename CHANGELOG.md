@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 — 2026-08-14
+
+- Added `HEO_AUTO_LOGIN_USER`: when set, every request without a session is signed in as that account automatically, with no login page. Off by default, opt-in via `.env`, logged loudly on every start while active. See "Auto-login" in [ARCHITECTURE.md](ARCHITECTURE.md) before turning it on anywhere reachable from outside a trusted network.
+- Renamed the server entry point and its supervisor script from `server.js`/`start-server.ps1` to `heo-server.js`/`start-heo-server.ps1`, so a process or scheduled-task list no longer reads identically to the sibling `listen` and `watch` services on the same host.
+
 ## 0.7.0 — 2026-08-12
 
 - Added a versioned IndexedDB mirror and durable operation outbox so signed-in learners can read, import, review, update words, complete readings and practise tones offline.

@@ -89,9 +89,9 @@ try {
 } finally { Pop-Location }
 
 Stop-ScheduledTask -TaskName "TimConHeoServer" -ErrorAction SilentlyContinue
-# The entry point was `server.js` before v0.7.1 and is `heo-server.js` after it.
-# Both are matched so that the deploy which performs the rename can still stop
-# the release it is replacing; otherwise the old process keeps port 3092 and the
+# The entry point was renamed from `server.js` to `heo-server.js`. Both are
+# matched so that the deploy which performs the rename can still stop the
+# release it is replacing; otherwise the old process keeps port 3092 and the
 # new release fails health verification and rolls itself back.
 $entryPointPattern = 'dist[\\/]server[\\/](heo-)?server\.js'
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match "TimConHeo.+$entryPointPattern" } |

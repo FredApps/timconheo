@@ -51,6 +51,12 @@ export const config = {
   // Signups are closed by default: this is a personal app behind a reverse proxy.
   // Accounts are created with `npm run admin`.
   allowSignups: bool(process.env.HEO_ALLOW_SIGNUPS, false),
+  // When set, any request without a valid session is silently signed in as this
+  // username instead of being asked to log in. This removes authentication for
+  // the whole deployment: anyone who reaches the URL gets this account, with
+  // full read/write on its words, progress and imports. Off unless explicitly
+  // set, precisely because it is not a default anyone should get by accident.
+  autoLoginUser: (process.env.HEO_AUTO_LOGIN_USER ?? "").trim(),
   version: packageVersion(),
   // Written into .env by scripts/install-server.ps1 so /api/health can say which
   // commit is actually running, not just which version claims to be.

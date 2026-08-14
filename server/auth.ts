@@ -113,26 +113,43 @@ export class AuthService {
 
   middleware = (req: Request, res: Response, next: NextFunction): void => {
     const token = this.requestToken(req);
-    if (!token) return next();
-    const session = this.db.getSession(hashSessionToken(token));
-    if (!session || session.user.disabled) {
+    if (token) {
+      const session = this.db.getSession(hashSessionToken(token));
+      if (session && !session.user.disabled) {
+        req.user = session.user;
+        req.sessionId = session.id;
+        if (Date.now() - session.lastSeen > ROLL_AFTER_MS) {
+          const expiresAt = Date.now() + SESSION_MS;
+          this.db.touchSession(session.id, expiresAt);
+          this.setCookie(res, token, expiresAt);
+        }
+        next();
+        return;
+      }
       res.clearCookie(config.cookieName, {
         path: config.basePath,
         secure: config.secureCookies,
         httpOnly: true,
         sameSite: "lax",
       });
-      return next();
     }
-    req.user = session.user;
-    req.sessionId = session.id;
-    if (Date.now() - session.lastSeen > ROLL_AFTER_MS) {
-      const expiresAt = Date.now() + SESSION_MS;
-      this.db.touchSession(session.id, expiresAt);
-      this.setCookie(res, token, expiresAt);
-    }
+    this.tryAutoLogin(req, res);
     next();
   };
+
+  /**
+   * Silently issues a session for `config.autoLoginUser`, if set, when a
+   * request arrives with no valid session of its own. See the warning on
+   * `autoLoginUser` in config.ts before turning this on anywhere reachable
+   * from outside a trusted network -- it removes authentication entirely.
+   */
+  private tryAutoLogin(req: Request, res: Response): void {
+    if (!config.autoLoginUser) return;
+    const record = this.db.getUserAuth(normalizeUsername(config.autoLoginUser));
+    if (!record || record.user.disabled) return;
+    this.issueSession(record.user, res);
+    req.user = record.user;
+  }
 
   requireUser = (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {

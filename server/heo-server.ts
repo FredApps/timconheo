@@ -797,6 +797,15 @@ await seedFirstUser();
 db.purgeExpiredSessions();
 setInterval(() => db.purgeExpiredSessions(), 60 * 60 * 1000).unref();
 
+if (config.autoLoginUser) {
+  // Printed on every start, not just once, because this line is the only
+  // record in the logs that authentication is off for this deployment.
+  console.warn(
+    `[heo] AUTHENTICATION DISABLED: every request without a session is signed in as ` +
+      `"${config.autoLoginUser}". Remove HEO_AUTO_LOGIN_USER to require login again.`,
+  );
+}
+
 app.listen(config.port, config.host, () => {
   console.log(
     `[heo] v${config.version}${config.commit ? ` (${config.commit.slice(0, 8)})` : ""} listening on ` +
